@@ -1,0 +1,175 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function role() {
+      return userDoc(request.auth.uid).role;
+    }
+
+    function isApproved() {
+      return userDoc(request.auth.uid).approvalStatus == 'approved';
+    }
+
+    function isAdmin() {
+      return isSignedIn() && role() == 'admin';
+    }
+
+    function isCohortManager() {
+      return isSignedIn() && role() == 'cohort_manager';
+    }
+
+    function isStaff() {
+      return isAdmin() || isCohortManager();
+    }
+
+    // --- users ---
+    // A user always owns their own doc. Admin approval is the only path to
+    // becoming `approved` and the only path to changing `role`.
+    match /users/{userId} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isStaff());
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.role != 'admin'
+        && request.resource.data.approvalStatus == 'pending';
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (request.auth.uid == userId
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.approvalStatus == resource.data.approvalStatus)
+      );
+      allow delete: if false;
+    }
+
+    // --- cohorts ---
+    match /cohorts/{cohortId} {
+      allow read: if isSignedIn() && isApproved();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    // --- applications ---
+    match /applications/{applicationId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        request.auth.uid in resource.data.evaluatorIds
+      );
+      // Founder creates only a clean draft they own — no pre-set eligibility,
+      // evaluators, or decision.
+      allow create: if isSignedIn() && isApproved()
+        && role() == 'founder'
+        && request.resource.data.founderId == request.auth.uid
+        && request.resource.data.status == 'draft'
+        && request.resource.data.isEligible == null
+        && request.resource.data.evaluatorIds.size() == 0
+        && !('committeeDecision' in request.resource.data);
+      // Staff (admin / cohort manager) run selection and may write freely.
+      // Founders may only edit their own DRAFT, and only a whitelist of fields
+      // — they cannot self-advance status past 'submitted', set eligibility,
+      // assign evaluators, or write a committee decision. Evaluators get NO
+      // write access to the application doc; their scores live in the
+      // scores/{evaluatorId} subcollection below.
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (role() == 'founder'
+          && resource.data.founderId == request.auth.uid
+          && request.resource.data.founderId == resource.data.founderId
+          && resource.data.status == 'draft'
+          && request.resource.data.status in ['draft', 'submitted']
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['pitchSummary', 'documentUrls', 'isComplete', 'status', 'submittedAt', 'updatedAt']))
+      );
+      allow delete: if false;
+
+      // Each evaluator owns exactly one score doc, keyed by their uid — this
+      // removes the read-modify-write race on a shared array and lets rules
+      // enforce that an evaluator writes only their own score. Founders can
+      // never read scores (reviewer notes stay private).
+      match /scores/{evaluatorId} {
+        function parentApp() {
+          return get(/databases/$(database)/documents/applications/$(applicationId)).data;
+        }
+        allow read: if isSignedIn() && (isStaff() || request.auth.uid == evaluatorId);
+        allow create, update: if isSignedIn()
+          && request.auth.uid == evaluatorId
+          && request.resource.data.evaluatorId == evaluatorId
+          && (request.auth.uid in parentApp().evaluatorIds)
+          && parentApp().get('committeeDecision', {'locked': false}).locked != true;
+        allow delete: if false;
+      }
+    }
+
+    // --- startups ---
+    // A founder creates and owns their own profile directly; it is not
+    // gated on selection. teamMemberUids is a denormalized, active-only
+    // mirror of teamMembers used here and for "my startups" queries.
+    match /startups/{startupId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        request.auth.uid in resource.data.teamMemberUids
+      );
+      allow create: if isSignedIn() && isApproved()
+        && role() == 'founder'
+        && request.resource.data.founderId == request.auth.uid
+        // A startup is never born already selected — incubation is set by
+        // staff on committee selection, never by the founder at create time.
+        && !('incubation' in request.resource.data);
+      // Staff may write freely (selection sets incubation). A founder may edit
+      // their own profile/team and toggle their own onboarding items, but may
+      // NOT fabricate incubation, change which cohort they were selected into,
+      // or self-set founderVerified (that stays a staff action).
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (
+          resource.data.founderId == request.auth.uid
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'sector', 'district', 'stage', 'description',
+                         'teamMembers', 'teamMemberUids', 'incubation', 'updatedAt'])
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['incubation'])
+            || (
+              'incubation' in resource.data
+              && request.resource.data.incubation.cohortId == resource.data.incubation.cohortId
+              && request.resource.data.incubation.applicationId == resource.data.incubation.applicationId
+              && request.resource.data.incubation.onboarding.founderVerified
+                   == resource.data.incubation.onboarding.founderVerified
+            )
+          )
+        )
+      );
+      allow delete: if false;
+
+      match /kpiSnapshots/{snapshotId} {
+        allow read: if isSignedIn() && (
+          isStaff() ||
+          get(/databases/$(database)/documents/startups/$(startupId)).data.founderId == request.auth.uid
+        );
+        allow create: if isSignedIn() && (
+          isStaff() ||
+          get(/databases/$(database)/documents/startups/$(startupId)).data.founderId == request.auth.uid
+        );
+        // Append-only: snapshots are never edited or removed once written.
+        allow update, delete: if false;
+      }
+    }
+
+    // --- audit log ---
+    // Append-only from every feature; only admins may read it back.
+    match /auditLog/{eventId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
+      allow update, delete: if false;
+    }
+  }
+}
