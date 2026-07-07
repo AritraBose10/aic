@@ -40,7 +40,14 @@ export function AppHeader() {
     <header className="sticky top-0 z-30 flex items-center justify-between border-b border-border bg-background/95 px-6 py-3 backdrop-blur">
       <Link href="/dashboard" className="flex items-center gap-3">
         <span className="rounded-md bg-white p-1.5">
-          <Image src="/logo.jpeg" alt="AIC Techno" width={142} height={32} className="h-6 w-auto sm:h-7" />
+          <Image
+            src="/logo.jpeg"
+            alt="AIC Techno"
+            width={142}
+            height={32}
+            className="w-auto"
+            style={{ height: 28 }}
+          />
         </span>
         <span className="hidden font-semibold tracking-tight lg:inline">
           Bengal Startup Ecosystem

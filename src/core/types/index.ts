@@ -34,6 +34,8 @@ export interface CohortDoc {
   eligibilityRules: string;
   scoringRubric: string;
   capacity: number;
+  /** Number of applications selected into this cohort — maintained transactionally to enforce capacity. */
+  selectedCount: number;
   applicationOpenAt: Timestamp;
   applicationCloseAt: Timestamp;
   status: CohortStatus;
@@ -60,6 +62,13 @@ export interface ApplicationScoreDoc {
   submittedAt: Timestamp;
 }
 
+/** Lives at applications/{id}/review/decision — staff-only read; keeps committee deliberation off the founder-readable app doc. */
+export interface CommitteeReviewDoc {
+  decidedBy: string;
+  notes: string | null;
+  decidedAt: Timestamp;
+}
+
 export interface ApplicationDoc {
   id: string;
   cohortId: string;
@@ -80,12 +89,12 @@ export interface ApplicationDoc {
   evaluatorIds: string[];
   // Scores live in the scores/{evaluatorId} subcollection, not on this doc —
   // read them with useApplicationScores(applicationId) / useMyScore(...).
+  // Public outcome only — the founder can read this. Private deliberation
+  // (who decided, internal notes) lives in the staff-only review/decision doc.
   committeeDecision?: {
     decision: "selected" | "rejected" | "waitlisted";
-    decidedBy: string;
     decidedAt: Timestamp;
     locked: boolean;
-    notes?: string;
   };
   submittedAt?: Timestamp;
   createdAt: Timestamp;

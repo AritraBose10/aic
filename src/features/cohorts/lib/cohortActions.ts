@@ -32,6 +32,7 @@ export async function createCohort(actor: Actor, input: CohortInput): Promise<st
     eligibilityRules: input.eligibilityRules,
     scoringRubric: input.scoringRubric,
     capacity: input.capacity,
+    selectedCount: 0,
     applicationOpenAt: Timestamp.fromDate(input.applicationOpenAt),
     applicationCloseAt: Timestamp.fromDate(input.applicationCloseAt),
     status: "draft" satisfies CohortStatus,

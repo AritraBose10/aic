@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ import {
   Card,
   CardContent,
   CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -112,11 +114,20 @@ export function RegisterForm() {
   const roleNote = ROLE_OPTIONS.find((r) => r.value === values.role)?.note;
 
   return (
-    <Card className="w-full max-w-lg">
-      <CardHeader>
-        <CardTitle>Create your account</CardTitle>
-        <CardDescription>{STEPS[step]}</CardDescription>
-        <div className="mt-3 flex gap-1.5">
+    <Card className="w-full max-w-xl">
+      <CardHeader className="gap-4">
+        <div className="flex items-center gap-3">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
+            <Building2 className="size-4.5" />
+          </span>
+          <div>
+            <CardTitle>Create your account</CardTitle>
+            <CardDescription>
+              Step {step + 1} of {STEPS.length} &middot; {STEPS[step]}
+            </CardDescription>
+          </div>
+        </div>
+        <div className="flex gap-1.5">
           {STEPS.map((label, i) => (
             <div
               key={label}
@@ -129,24 +140,24 @@ export function RegisterForm() {
         </div>
       </CardHeader>
       <CardContent>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form id="register-form" onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {step === 0 && (
             <div className="space-y-4">
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="name">Full name</Label>
                 <Input id="name" {...form.register("name")} />
                 {form.formState.errors.name && (
                   <p className="text-sm text-destructive">{form.formState.errors.name.message}</p>
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="email">Email</Label>
                 <Input id="email" type="email" {...form.register("email")} />
                 {form.formState.errors.email && (
                   <p className="text-sm text-destructive">{form.formState.errors.email.message}</p>
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <Label htmlFor="password">Password</Label>
                 <Input id="password" type="password" {...form.register("password")} />
                 {form.formState.errors.password && (
@@ -155,8 +166,10 @@ export function RegisterForm() {
                   </p>
                 )}
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone (optional)</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">
+                  Phone <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
                 <Input id="phone" {...form.register("phone")} />
               </div>
             </div>
@@ -169,7 +182,7 @@ export function RegisterForm() {
                 value={values.role}
                 onValueChange={(v) => form.setValue("role", v as FormValues["role"])}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -180,12 +193,16 @@ export function RegisterForm() {
                   ))}
                 </SelectContent>
               </Select>
-              {roleNote && <p className="text-sm text-muted-foreground">{roleNote}</p>}
+              {roleNote && (
+                <p className="rounded-lg bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+                  {roleNote}
+                </p>
+              )}
             </div>
           )}
 
           {step === 2 && (
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               <Label htmlFor="registrationNote">
                 {values.role === "founder"
                   ? "Briefly describe your startup or idea"
@@ -203,42 +220,48 @@ export function RegisterForm() {
           )}
 
           {step === 3 && (
-            <div className="space-y-2 text-sm">
-              <p>
-                <span className="text-muted-foreground">Name:</span> {values.name}
-              </p>
-              <p>
-                <span className="text-muted-foreground">Email:</span> {values.email}
-              </p>
-              <p>
-                <span className="text-muted-foreground">Role:</span>{" "}
-                {ROLE_OPTIONS.find((r) => r.value === values.role)?.label}
-              </p>
-              <p>
-                <span className="text-muted-foreground">Details:</span> {values.registrationNote}
-              </p>
-              <p className="pt-2 text-muted-foreground">
+            <div className="space-y-3">
+              <div className="divide-y divide-border overflow-hidden rounded-lg border text-sm">
+                <div className="flex items-center justify-between gap-4 px-3 py-2">
+                  <span className="text-muted-foreground">Name</span>
+                  <span className="text-right font-medium">{values.name}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 px-3 py-2">
+                  <span className="text-muted-foreground">Email</span>
+                  <span className="text-right font-medium">{values.email}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4 px-3 py-2">
+                  <span className="text-muted-foreground">Role</span>
+                  <span className="text-right font-medium">
+                    {ROLE_OPTIONS.find((r) => r.value === values.role)?.label}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1 px-3 py-2">
+                  <span className="text-muted-foreground">Details</span>
+                  <span className="font-medium">{values.registrationNote}</span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground">
                 Your account needs admin approval before you can sign in.
               </p>
             </div>
           )}
-
-          <div className="flex justify-between pt-2">
-            <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>
-              Back
-            </Button>
-            {step < STEPS.length - 1 ? (
-              <Button type="button" onClick={goNext}>
-                Next
-              </Button>
-            ) : (
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Submitting..." : "Submit registration"}
-              </Button>
-            )}
-          </div>
         </form>
       </CardContent>
+      <CardFooter className="justify-between">
+        <Button type="button" variant="outline" onClick={goBack} disabled={step === 0}>
+          Back
+        </Button>
+        {step < STEPS.length - 1 ? (
+          <Button type="button" onClick={goNext}>
+            Next
+          </Button>
+        ) : (
+          <Button type="submit" form="register-form" disabled={submitting}>
+            {submitting ? "Submitting..." : "Submit registration"}
+          </Button>
+        )}
+      </CardFooter>
     </Card>
   );
 }

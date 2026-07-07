@@ -49,7 +49,9 @@ const STATUS_STYLE: Record<ApplicationStatus, string> = {
 function ApplicationReviewCard({ application }: { application: ApplicationDoc }) {
   const { userDoc } = useAuth();
   const { scores } = useApplicationScores(application.id);
-  const [notes, setNotes] = useState(application.committeeDecision?.notes ?? "");
+  // Committee notes are write-only from here — they live in a staff-only
+  // subcollection, not on the founder-readable application doc.
+  const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
 
   const scored = scores.filter((s) => !s.conflictOfInterest);
@@ -62,10 +64,10 @@ function ApplicationReviewCard({ application }: { application: ApplicationDoc })
     if (!userDoc) return;
     setBusy(true);
     try {
-      await recordCommitteeDecision(application.id, { uid: userDoc.uid, role: userDoc.role }, decision, notes);
+      await recordCommitteeDecision(application.id, decision, notes);
       toast.success(`Application ${decision}`);
-    } catch {
-      toast.error("Could not record decision");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record decision");
     } finally {
       setBusy(false);
     }
@@ -75,10 +77,10 @@ function ApplicationReviewCard({ application }: { application: ApplicationDoc })
     if (!userDoc) return;
     setBusy(true);
     try {
-      await reopenCommitteeDecision(application.id, { uid: userDoc.uid, role: userDoc.role });
+      await reopenCommitteeDecision(application.id);
       toast.success("Decision reopened");
-    } catch {
-      toast.error("Could not reopen decision");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not reopen decision");
     } finally {
       setBusy(false);
     }

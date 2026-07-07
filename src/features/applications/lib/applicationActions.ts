@@ -1,19 +1,7 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  limit,
-  query,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
+import { doc, runTransaction, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 import { FirebaseError } from "firebase/app";
-import { db } from "@/lib/firebase";
+import { httpsCallable } from "firebase/functions";
+import { db, functions } from "@/lib/firebase";
 import { logAuditEvent } from "@/core/audit";
 import type {
   ApplicationDoc,
@@ -23,50 +11,66 @@ import type {
   StartupDoc,
 } from "@/core/types";
 
+/** Surface a callable's HttpsError message (or a fallback) as a plain Error. */
+function callableError(err: unknown, fallback: string): Error {
+  if (err instanceof FirebaseError && err.message) return new Error(err.message);
+  return err instanceof Error ? err : new Error(fallback);
+}
+
 interface Actor {
   uid: string;
   role: Role;
 }
 
+function assertCohortAcceptingApplications(cohort: Pick<CohortDoc, "status" | "applicationCloseAt">) {
+  if (cohort.status !== "open") {
+    throw new Error("This cohort is not open for applications.");
+  }
+  if (cohort.applicationCloseAt.toMillis() < Date.now()) {
+    throw new Error("The application deadline for this cohort has passed.");
+  }
+}
+
 /**
- * Returns the id of the founder's existing application for this cohort, or
- * creates a fresh draft snapshotting the startup profile as it stands now.
+ * Returns the id of the founder's application for this cohort, creating a fresh
+ * draft if none exists. The doc id is deterministic (`${cohortId}_${uid}`) and
+ * the create runs in a transaction, so two concurrent tabs converge on one
+ * draft instead of racing to create duplicates.
  */
 export async function getOrCreateDraftApplication(
   actor: Actor,
   startup: StartupDoc,
   cohort: CohortDoc,
 ): Promise<string> {
-  const existing = await getDocs(
-    query(
-      collection(db, "applications"),
-      where("founderId", "==", actor.uid),
-      where("cohortId", "==", cohort.id),
-      limit(1),
-    ),
-  );
-  if (!existing.empty) return existing.docs[0].id;
+  assertCohortAcceptingApplications(cohort);
 
-  const ref = await addDoc(collection(db, "applications"), {
-    cohortId: cohort.id,
-    cohortName: cohort.name,
-    founderId: actor.uid,
-    startupId: startup.id,
-    startupName: startup.name,
-    sector: startup.sector,
-    district: startup.district,
-    stage: startup.stage,
-    pitchSummary: "",
-    documentUrls: [],
-    status: "draft",
-    isComplete: false,
-    isEligible: null,
-    evaluatorIds: [],
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+  const applicationId = `${cohort.id}_${actor.uid}`;
+  const ref = doc(db, "applications", applicationId);
+
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists()) return;
+    tx.set(ref, {
+      cohortId: cohort.id,
+      cohortName: cohort.name,
+      founderId: actor.uid,
+      startupId: startup.id,
+      startupName: startup.name,
+      sector: startup.sector,
+      district: startup.district,
+      stage: startup.stage,
+      pitchSummary: "",
+      documentUrls: [],
+      status: "draft",
+      isComplete: false,
+      isEligible: null,
+      evaluatorIds: [],
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
   });
 
-  return ref.id;
+  return applicationId;
 }
 
 export interface ApplicationDraftInput {
@@ -90,35 +94,18 @@ export async function saveApplicationDraft(
   });
 }
 
-export async function submitApplication(applicationId: string, actor: Actor): Promise<void> {
-  const snap = await getDoc(doc(db, "applications", applicationId));
-  if (!snap.exists()) throw new Error("Application not found");
-  const application = snap.data() as ApplicationDoc;
-
-  if (!isDraftComplete({ pitchSummary: application.pitchSummary, pitchDeckUrl: application.documentUrls[0] ?? "" })) {
-    throw new Error("Complete the pitch summary and pitch deck link before submitting.");
+/**
+ * Submits via the server-authoritative `submitApplication` callable, which
+ * enforces cohort-open + deadline + ownership + completeness with Admin
+ * privileges (the client can no longer flip status to `submitted` directly)
+ * and writes the audit entry server-side.
+ */
+export async function submitApplication(applicationId: string): Promise<void> {
+  try {
+    await httpsCallable(functions, "submitApplication")({ applicationId });
+  } catch (err) {
+    throw callableError(err, "Could not submit application.");
   }
-
-  await updateDoc(doc(db, "applications", applicationId), {
-    status: "submitted",
-    isComplete: true,
-    submittedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-
-  await logAuditEvent({
-    actorId: actor.uid,
-    actorRole: actor.role,
-    action: "application.submit",
-    entityType: "application",
-    entityId: applicationId,
-  });
-}
-
-async function loadApplication(applicationId: string): Promise<ApplicationDoc> {
-  const snap = await getDoc(doc(db, "applications", applicationId));
-  if (!snap.exists()) throw new Error("Application not found");
-  return { id: snap.id, ...snap.data() } as ApplicationDoc;
 }
 
 export async function assignEvaluators(
@@ -126,14 +113,16 @@ export async function assignEvaluators(
   actor: Actor,
   evaluatorIds: string[],
 ): Promise<void> {
-  const application = await loadApplication(applicationId);
-  const nextStatus: ApplicationStatus =
-    application.status === "submitted" ? "under_review" : application.status;
-
-  await updateDoc(doc(db, "applications", applicationId), {
-    evaluatorIds,
-    status: nextStatus,
-    updatedAt: serverTimestamp(),
+  // Transaction so the submitted -> under_review bump is computed from the
+  // current server state, not a stale read.
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, "applications", applicationId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Application not found");
+    const application = snap.data() as ApplicationDoc;
+    const nextStatus: ApplicationStatus =
+      application.status === "submitted" ? "under_review" : application.status;
+    tx.update(ref, { evaluatorIds, status: nextStatus, updatedAt: serverTimestamp() });
   });
 
   await logAuditEvent({
@@ -209,78 +198,30 @@ export async function setApplicationEligibility(
   });
 }
 
+/**
+ * Records a committee decision via the server-authoritative `recordDecision`
+ * callable. All the invariants that Firestore rules can't express — capacity,
+ * eligibility, admin-only unlock, incubation lifecycle, private notes, and an
+ * immutable server-authored audit entry — are enforced there with Admin
+ * privileges. The client can no longer write committeeDecision directly.
+ */
 export async function recordCommitteeDecision(
   applicationId: string,
-  actor: Actor,
   decision: "selected" | "rejected" | "waitlisted",
   notes: string,
 ): Promise<void> {
-  const application = await loadApplication(applicationId);
-  const batch = writeBatch(db);
-
-  batch.update(doc(db, "applications", applicationId), {
-    status: decision,
-    committeeDecision: {
-      decision,
-      decidedBy: actor.uid,
-      decidedAt: serverTimestamp(),
-      locked: true,
-      notes: notes || null,
-    },
-    updatedAt: serverTimestamp(),
-  });
-
-  // Selecting an application turns the startup into an incubatee and opens its
-  // onboarding checklist. Only initialize once — re-deciding after a reopen
-  // must not wipe onboarding progress already made.
-  if (decision === "selected") {
-    const startupSnap = await getDoc(doc(db, "startups", application.startupId));
-    if (startupSnap.exists() && !(startupSnap.data() as StartupDoc).incubation) {
-      batch.update(doc(db, "startups", application.startupId), {
-        incubation: {
-          cohortId: application.cohortId,
-          cohortName: application.cohortName,
-          applicationId,
-          onboarding: {
-            acceptedOffer: false,
-            consentGiven: false,
-            baselineKpiCaptured: false,
-            orientationComplete: false,
-            founderVerified: false,
-          },
-        },
-        updatedAt: serverTimestamp(),
-      });
-    }
+  try {
+    await httpsCallable(functions, "recordDecision")({ applicationId, decision, notes });
+  } catch (err) {
+    throw callableError(err, "Could not record decision.");
   }
-
-  await batch.commit();
-
-  await logAuditEvent({
-    actorId: actor.uid,
-    actorRole: actor.role,
-    action: "application.decide",
-    entityType: "application",
-    entityId: applicationId,
-    details: { decision },
-  });
 }
 
-/** Admin-only in the UI — Firestore only enforces "staff", not the admin/cohort_manager distinction. */
-export async function reopenCommitteeDecision(applicationId: string, actor: Actor): Promise<void> {
-  const application = await loadApplication(applicationId);
-  if (!application.committeeDecision) return;
-
-  await updateDoc(doc(db, "applications", applicationId), {
-    "committeeDecision.locked": false,
-    updatedAt: serverTimestamp(),
-  });
-
-  await logAuditEvent({
-    actorId: actor.uid,
-    actorRole: actor.role,
-    action: "application.reopen",
-    entityType: "application",
-    entityId: applicationId,
-  });
+/** Reopening a locked decision is admin-only — enforced server-side. */
+export async function reopenCommitteeDecision(applicationId: string): Promise<void> {
+  try {
+    await httpsCallable(functions, "reopenDecision")({ applicationId });
+  } catch (err) {
+    throw callableError(err, "Could not reopen decision.");
+  }
 }

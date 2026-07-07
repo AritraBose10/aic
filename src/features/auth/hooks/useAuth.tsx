@@ -43,10 +43,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       setLoading(true);
-      unsubscribeDoc = onSnapshot(doc(db, "users", user.uid), (snap) => {
-        setUserDoc(snap.exists() ? (snap.data() as UserDoc) : null);
-        setLoading(false);
-      });
+      unsubscribeDoc = onSnapshot(
+        doc(db, "users", user.uid),
+        (snap) => {
+          setUserDoc(snap.exists() ? (snap.data() as UserDoc) : null);
+          setLoading(false);
+        },
+        (error) => {
+          // Without an error callback a listener failure (permission-denied,
+          // stream error) would leave loading=true forever -> permanent spinner.
+          // Resolve to a signed-out-shaped state so the app can redirect/recover.
+          console.error("user doc listener error", error);
+          setUserDoc(null);
+          setLoading(false);
+        },
+      );
     });
 
     return () => {

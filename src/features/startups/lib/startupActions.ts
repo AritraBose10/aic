@@ -2,10 +2,10 @@ import {
   addDoc,
   collection,
   doc,
-  getDoc,
   getDocs,
   limit,
   query,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -83,12 +83,6 @@ export async function updateStartupProfile(
   });
 }
 
-async function loadStartup(startupId: string): Promise<StartupDoc> {
-  const snap = await getDoc(doc(db, "startups", startupId));
-  if (!snap.exists()) throw new Error("Startup not found");
-  return { id: snap.id, ...snap.data() } as StartupDoc;
-}
-
 function activeUids(teamMembers: StartupTeamMemberDoc[]): string[] {
   return teamMembers.filter((m) => m.status === "active").map((m) => m.uid);
 }
@@ -110,11 +104,6 @@ export async function inviteTeamMember(
     throw new Error("That user's account is not yet approved.");
   }
 
-  const startup = await loadStartup(startupId);
-  if (startup.teamMembers.some((m) => m.uid === target.uid)) {
-    throw new Error("That person is already on the team.");
-  }
-
   const newMember: StartupTeamMemberDoc = {
     uid: target.uid,
     email: target.email,
@@ -123,12 +112,24 @@ export async function inviteTeamMember(
     status: "active",
     invitedAt: Timestamp.now(),
   };
-  const teamMembers = [...startup.teamMembers, newMember];
 
-  await updateDoc(doc(db, "startups", startupId), {
-    teamMembers,
-    teamMemberUids: activeUids(teamMembers),
-    updatedAt: serverTimestamp(),
+  // Transaction: re-read teamMembers inside the tx and append, so two
+  // concurrent invites (or an invite racing a suspend) can't clobber each
+  // other's array. The user lookup above stays outside — it's not contended.
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, "startups", startupId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Startup not found");
+    const startup = snap.data() as StartupDoc;
+    if (startup.teamMembers.some((m) => m.uid === target.uid)) {
+      throw new Error("That person is already on the team.");
+    }
+    const teamMembers = [...startup.teamMembers, newMember];
+    tx.update(ref, {
+      teamMembers,
+      teamMemberUids: activeUids(teamMembers),
+      updatedAt: serverTimestamp(),
+    });
   });
 
   await logAuditEvent({
@@ -147,13 +148,19 @@ async function setTeamMemberStatus(
   targetUid: string,
   status: StartupTeamMemberDoc["status"],
 ): Promise<void> {
-  const startup = await loadStartup(startupId);
-  const teamMembers = startup.teamMembers.map((m) => (m.uid === targetUid ? { ...m, status } : m));
-
-  await updateDoc(doc(db, "startups", startupId), {
-    teamMembers,
-    teamMemberUids: activeUids(teamMembers),
-    updatedAt: serverTimestamp(),
+  await runTransaction(db, async (tx) => {
+    const ref = doc(db, "startups", startupId);
+    const snap = await tx.get(ref);
+    if (!snap.exists()) throw new Error("Startup not found");
+    const startup = snap.data() as StartupDoc;
+    const teamMembers = startup.teamMembers.map((m) =>
+      m.uid === targetUid ? { ...m, status } : m,
+    );
+    tx.update(ref, {
+      teamMembers,
+      teamMemberUids: activeUids(teamMembers),
+      updatedAt: serverTimestamp(),
+    });
   });
 
   await logAuditEvent({

@@ -40,11 +40,15 @@ service cloud.firestore {
         && request.auth.uid == userId
         && request.resource.data.role != 'admin'
         && request.resource.data.approvalStatus == 'pending';
+      // Admins may write any user field (approve/reject). A user editing their
+      // own doc may only touch profile fields — NOT role, approvalStatus,
+      // email, uid, createdAt, or approval provenance. (The email pin also
+      // protects the team-invite lookup, which resolves invitees by email.)
       allow update: if isSignedIn() && (
         isAdmin() ||
         (request.auth.uid == userId
-          && request.resource.data.role == resource.data.role
-          && request.resource.data.approvalStatus == resource.data.approvalStatus)
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['name', 'phone', 'registrationNote', 'updatedAt']))
       );
       allow delete: if false;
     }
@@ -52,7 +56,11 @@ service cloud.firestore {
     // --- cohorts ---
     match /cohorts/{cohortId} {
       allow read: if isSignedIn() && isApproved();
-      allow create, update: if isStaff();
+      allow create: if isStaff();
+      // selectedCount is maintained only by the recordDecision Cloud Function
+      // (Admin SDK bypasses rules); staff can't move it via the client.
+      allow update: if isStaff()
+        && request.resource.data.selectedCount == resource.data.selectedCount;
       allow delete: if false;
     }
 
@@ -64,29 +72,39 @@ service cloud.firestore {
         request.auth.uid in resource.data.evaluatorIds
       );
       // Founder creates only a clean draft they own — no pre-set eligibility,
-      // evaluators, or decision.
+      // evaluators, or decision — and only against an OPEN cohort.
       allow create: if isSignedIn() && isApproved()
         && role() == 'founder'
         && request.resource.data.founderId == request.auth.uid
         && request.resource.data.status == 'draft'
         && request.resource.data.isEligible == null
         && request.resource.data.evaluatorIds.size() == 0
-        && !('committeeDecision' in request.resource.data);
-      // Staff (admin / cohort manager) run selection and may write freely.
-      // Founders may only edit their own DRAFT, and only a whitelist of fields
-      // — they cannot self-advance status past 'submitted', set eligibility,
-      // assign evaluators, or write a committee decision. Evaluators get NO
-      // write access to the application doc; their scores live in the
-      // scores/{evaluatorId} subcollection below.
+        && !('committeeDecision' in request.resource.data)
+        && get(/databases/$(database)/documents/cohorts/$(request.resource.data.cohortId)).data.status == 'open';
+      // The committee decision and submission are owned by Cloud Functions
+      // (recordDecision / submitApplication), which run with Admin privileges
+      // and enforce capacity, eligibility, deadlines, and locking. So the
+      // CLIENT may never write `committeeDecision` and may never move `status`
+      // into a decision value or 'submitted' — those transitions only reach
+      // Firestore via the functions (Admin SDK bypasses these rules).
+      // Staff may still assign evaluators, set eligibility, and bump
+      // submitted -> under_review; founders may only edit their own draft.
       allow update: if isSignedIn() && (
-        isStaff() ||
+        (isStaff()
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.startupId == resource.data.startupId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['committeeDecision'])
+          && !(request.resource.data.status != resource.data.status
+               && request.resource.data.status in ['selected', 'rejected', 'waitlisted'])
+        ) ||
         (role() == 'founder'
           && resource.data.founderId == request.auth.uid
           && request.resource.data.founderId == resource.data.founderId
           && resource.data.status == 'draft'
-          && request.resource.data.status in ['draft', 'submitted']
+          && request.resource.data.status == 'draft'
           && request.resource.data.diff(resource.data).affectedKeys()
-               .hasOnly(['pitchSummary', 'documentUrls', 'isComplete', 'status', 'submittedAt', 'updatedAt']))
+               .hasOnly(['pitchSummary', 'documentUrls', 'isComplete', 'updatedAt']))
       );
       allow delete: if false;
 
@@ -104,6 +122,13 @@ service cloud.firestore {
           && request.resource.data.evaluatorId == evaluatorId
           && (request.auth.uid in parentApp().evaluatorIds)
           && parentApp().get('committeeDecision', {'locked': false}).locked != true;
+        allow delete: if false;
+      }
+
+      // Private committee deliberation (decider identity, internal notes).
+      // Staff-only read so it never leaks to the founder via the app doc.
+      match /review/{docId} {
+        allow read, create, update: if isStaff();
         allow delete: if false;
       }
     }
@@ -129,7 +154,9 @@ service cloud.firestore {
       // NOT fabricate incubation, change which cohort they were selected into,
       // or self-set founderVerified (that stays a staff action).
       allow update: if isSignedIn() && (
-        isStaff() ||
+        (isStaff()
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.createdAt == resource.data.createdAt) ||
         (
           resource.data.founderId == request.auth.uid
           && request.resource.data.founderId == resource.data.founderId
@@ -165,10 +192,14 @@ service cloud.firestore {
     }
 
     // --- audit log ---
-    // Append-only from every feature; only admins may read it back.
+    // Append-only; only admins read it back. High-stakes actions are written
+    // exclusively by Cloud Functions (Admin SDK) so their audit trail is
+    // tamper-proof — the client may not forge those action types.
     match /auditLog/{eventId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn() && request.resource.data.actorId == request.auth.uid;
+      allow create: if isSignedIn()
+        && request.resource.data.actorId == request.auth.uid
+        && !(request.resource.data.action in ['application.decide', 'application.reopen', 'application.submit']);
       allow update, delete: if false;
     }
   }

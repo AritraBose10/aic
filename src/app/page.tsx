@@ -82,7 +82,14 @@ export default function Home() {
         <div className="relative mx-auto grid max-w-6xl gap-12 px-6 py-20 lg:grid-cols-2 lg:items-center lg:py-28">
           <div className="space-y-6 text-center lg:text-left">
             <span className="inline-flex items-center gap-2 rounded-full border border-border bg-card py-1 pr-3 pl-1.5 text-xs font-medium text-muted-foreground shadow-sm">
-              <Image src="/logo.jpeg" alt="AIC Techno" width={142} height={32} className="h-4 w-auto" />
+              <Image
+                src="/logo.jpeg"
+                alt="AIC Techno"
+                width={142}
+                height={32}
+                className="w-auto"
+                style={{ height: 16 }}
+              />
               Techno India Group
             </span>
             <h1 className="text-4xl leading-tight font-semibold tracking-tight text-balance sm:text-5xl lg:text-6xl">
@@ -256,7 +263,14 @@ export default function Home() {
             <span>Bengal Startup Ecosystem</span>
           </div>
           <span className="rounded-md bg-white p-2">
-            <Image src="/logo.jpeg" alt="AIC Techno · NITI Aayog · Atal Innovation Mission" width={142} height={32} className="h-8 w-auto" />
+            <Image
+              src="/logo.jpeg"
+              alt="AIC Techno · NITI Aayog · Atal Innovation Mission"
+              width={142}
+              height={32}
+              className="w-auto"
+              style={{ height: 32 }}
+            />
           </span>
         </div>
       </footer>

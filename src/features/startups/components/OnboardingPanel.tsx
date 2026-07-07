@@ -8,19 +8,27 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAuth } from "@/features/auth/hooks/useAuth";
+import { useKpiSnapshots } from "@/features/startups/hooks/useKpiSnapshots";
 import { setOnboardingItem } from "@/features/startups/lib/startupActions";
 import { BaselineKpiForm } from "@/features/startups/components/BaselineKpiForm";
-import { ONBOARDING_STEPS, type StartupDoc } from "@/core/types";
+import { ONBOARDING_STEPS, type OnboardingChecklist, type StartupDoc } from "@/core/types";
 
 export function OnboardingPanel({ startup }: { startup: StartupDoc }) {
   const { userDoc } = useAuth();
+  const { snapshots } = useKpiSnapshots(startup.id);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [kpiOpen, setKpiOpen] = useState(false);
 
   const onboarding = startup.incubation?.onboarding;
   if (!startup.incubation || !onboarding) return null;
 
-  const doneCount = ONBOARDING_STEPS.filter((s) => onboarding[s.key]).length;
+  // The baseline row is derived from an actual baseline snapshot existing —
+  // not from the free-writable flag — so a crafted flag can't fake completion.
+  const hasBaseline = snapshots.some((s) => s.isBaseline);
+  const stepDone = (key: keyof OnboardingChecklist) =>
+    key === "baselineKpiCaptured" ? hasBaseline : onboarding[key];
+
+  const doneCount = ONBOARDING_STEPS.filter((s) => stepDone(s.key)).length;
   const allDone = doneCount === ONBOARDING_STEPS.length;
 
   async function toggleFounderItem(key: (typeof ONBOARDING_STEPS)[number]["key"], next: boolean) {
@@ -57,7 +65,7 @@ export function OnboardingPanel({ startup }: { startup: StartupDoc }) {
           {ONBOARDING_STEPS.map((step) => (
             <div
               key={step.key}
-              className={`h-1.5 flex-1 rounded-full ${onboarding[step.key] ? "bg-success" : "bg-muted"}`}
+              className={`h-1.5 flex-1 rounded-full ${stepDone(step.key) ? "bg-success" : "bg-muted"}`}
             />
           ))}
         </div>
@@ -71,7 +79,7 @@ export function OnboardingPanel({ startup }: { startup: StartupDoc }) {
         )}
 
         {ONBOARDING_STEPS.map((step) => {
-          const done = onboarding[step.key];
+          const done = stepDone(step.key);
           const isKpi = step.key === "baselineKpiCaptured";
           const isStaffOwned = step.owner === "staff";
 

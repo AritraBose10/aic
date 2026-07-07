@@ -80,7 +80,7 @@ export function ApplicationForm({ applicationId }: { applicationId: string }) {
     setSubmitting(true);
     try {
       await saveApplicationDraft(applicationId, { pitchSummary, pitchDeckUrl });
-      await submitApplication(applicationId, { uid: userDoc.uid, role: userDoc.role });
+      await submitApplication(applicationId);
       toast.success("Application submitted");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not submit application");
