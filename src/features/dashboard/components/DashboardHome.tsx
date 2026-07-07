@@ -49,7 +49,7 @@ export function DashboardHome() {
         <CardTitle>Welcome, {userDoc.name}</CardTitle>
         <CardDescription>{content.message}</CardDescription>
       </CardHeader>
-      <CardContent className="flex items-center justify-between text-sm text-muted-foreground">
+      <CardContent className="flex flex-col items-start gap-3 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
         <span>
           Signed in as {userDoc.email} — role: {userDoc.role.replace("_", " ")}
         </span>

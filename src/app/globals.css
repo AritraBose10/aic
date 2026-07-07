@@ -138,7 +138,30 @@
   }
 }
 
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
 @utility bg-dot-grid {
   background-image: radial-gradient(color-mix(in oklch, var(--foreground), transparent 88%) 1px, transparent 1px);
   background-size: 24px 24px;
+}
+
+@keyframes loader-fade {
+  0%,
+  100% {
+    opacity: 0.15;
+  }
+  35% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loader-bar {
+    animation: none !important;
+    opacity: 0.6;
+  }
 }

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PageLoader } from "@/components/PageLoader";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { logoutUser } from "@/features/auth/lib/authActions";
 
@@ -24,11 +25,7 @@ export default function PendingApprovalPage() {
   }, [loading, firebaseUser, userDoc, router]);
 
   if (loading || !userDoc) {
-    return (
-      <div className="flex min-h-[50vh] flex-1 items-center justify-center text-muted-foreground">
-        Loading...
-      </div>
-    );
+    return <PageLoader />;
   }
 
   const isRejected = userDoc.approvalStatus === "rejected";

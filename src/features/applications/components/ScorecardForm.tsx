@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
+import { Loader } from "@/components/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,14 @@ export function ScorecardForm({ applicationId }: { applicationId: string }) {
     setComments(existingScore?.comments ?? "");
   }
 
-  if (loading) return <div className="text-sm text-muted-foreground">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader size="sm" />
+        Loading…
+      </div>
+    );
+  }
   if (!application) return <div className="text-sm text-muted-foreground">Application not found.</div>;
 
   const locked = Boolean(application.committeeDecision?.locked);

@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Building2 } from "lucide-react";
+import { Loader } from "@/components/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,7 +184,11 @@ export function RegisterForm() {
                 onValueChange={(v) => form.setValue("role", v as FormValues["role"])}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue />
+                  <SelectValue>
+                    {(v: FormValues["role"]) =>
+                      ROLE_OPTIONS.find((opt) => opt.value === v)?.label
+                    }
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {ROLE_OPTIONS.map((opt) => (
@@ -210,7 +215,25 @@ export function RegisterForm() {
                     ? "Your affiliation and area of expertise"
                     : "Your organisation and role"}
               </Label>
-              <Textarea id="registrationNote" rows={5} {...form.register("registrationNote")} />
+              <p className="text-sm text-muted-foreground">
+                {values.role === "founder"
+                  ? "What are you building, and what stage is it at?"
+                  : values.role === "evaluator"
+                    ? "Where do you work, and what do you specialize in reviewing?"
+                    : "Which organisation are you with, and what's your role there?"}
+              </p>
+              <Textarea
+                id="registrationNote"
+                rows={5}
+                placeholder={
+                  values.role === "founder"
+                    ? "e.g. Building an AI-powered logistics platform for MSMEs, currently at MVP stage with 3 pilot customers."
+                    : values.role === "evaluator"
+                      ? "e.g. Senior Product Manager at Acme Corp, 8 years reviewing early-stage SaaS and fintech applications."
+                      : "e.g. Program Manager at Bengal Startup Ecosystem, overseeing cohort operations and applicant onboarding."
+                }
+                {...form.register("registrationNote")}
+              />
               {form.formState.errors.registrationNote && (
                 <p className="text-sm text-destructive">
                   {form.formState.errors.registrationNote.message}
@@ -258,6 +281,7 @@ export function RegisterForm() {
           </Button>
         ) : (
           <Button type="submit" form="register-form" disabled={submitting}>
+            {submitting && <Loader size="sm" />}
             {submitting ? "Submitting..." : "Submit registration"}
           </Button>
         )}

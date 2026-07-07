@@ -152,6 +152,50 @@ async function seed() {
       notes: "confidential",
       decidedAt: now,
     });
+
+    // --- Phase 2 fixtures ---
+    await db.doc("masters/m1").set({ type: "sector", label: "AgriTech", order: 0, active: true, createdAt: now, updatedAt: now });
+    await db.doc("tickets/t1").set({
+      kind: "service", title: "Need marketing help", category: "marketing", urgency: "medium",
+      requiredOutcome: "landing page", requesterId: "founder", requesterName: "founder",
+      startupId: "s1", providerId: "evalA", status: "assigned", notes: [], attachments: [],
+      createdAt: now, updatedAt: now,
+    });
+    await db.doc("meetings/mt1").set({
+      kind: "mentor", requesterId: "founder", requesterName: "founder", startupId: "s1",
+      hostId: "evalA", hostName: "evalA", topic: "GTM", proposedAt: now, status: "requested",
+      createdAt: now, updatedAt: now,
+    });
+    await db.doc("communications/c1").set({
+      entityType: "startup", entityId: "s1", channel: "in_app", subject: "Hi", body: "Body",
+      toUserId: "founder", sentBy: "mgr", at: now,
+    });
+    await db.doc("notificationTemplates/application.submitted").set({
+      key: "application.submitted", channel: "email", subject: "Received", body: "Thanks {{name}}",
+      active: true, createdAt: now, updatedAt: now,
+    });
+    await db.doc("documents/d1").set({
+      ownerType: "startup", ownerId: "s1", category: "certificate", title: "Cert", version: 1,
+      storagePath: "documents/startup/s1/cert.pdf", downloadUrl: "https://x", uploadedBy: "mgr",
+      visibleTo: ["founder"], supersededBy: null, createdAt: now,
+    });
+    await db.doc("courses/course1").set({
+      title: "GTM 101", description: "d", track: "mandatory", sector: null, sessions: [],
+      active: true, createdBy: "mgr", createdAt: now, updatedAt: now,
+    });
+    await db.doc("enrollments/course1_s1").set({
+      courseId: "course1", courseTitle: "GTM 101", track: "mandatory", startupId: "s1",
+      founderId: "founder", attendedSessionIds: [], status: "enrolled", enrolledAt: now, updatedAt: now,
+    });
+    await db.doc("graduations/s1").set({
+      startupId: "s1", startupName: "s1", cohortId: "open", founderId: "founder",
+      criteria: [], score: 0, createdAt: now, updatedAt: now,
+    });
+    await db.doc("directory/dir1").set({
+      kind: "mentor", name: "Jane Mentor", category: "GTM", description: "d", languages: [],
+      expertise: ["sales"], equipment: [], services: [], active: true, createdBy: "mgr",
+      createdAt: now, updatedAt: now,
+    });
   });
 }
 
@@ -444,5 +488,191 @@ describe("auditLog", () => {
     });
     await assertSucceeds(getDoc(doc(db("admin"), "auditLog", "e2")));
     await assertFails(getDoc(doc(db("mgr"), "auditLog", "e2")));
+  });
+});
+
+// ===================== Phase 2 core primitives =====================
+
+describe("masters", () => {
+  it("approved users read, only admins write", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "masters", "m1")));
+    await assertFails(getDoc(doc(db(), "masters", "m1")));
+    await assertSucceeds(
+      setDoc(doc(db("admin"), "masters", "m2"), { type: "sector", label: "FoodTech", order: 1, active: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }),
+    );
+    await assertFails(
+      setDoc(doc(db("mgr"), "masters", "m3"), { type: "sector", label: "X", order: 2, active: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }),
+    );
+  });
+});
+
+describe("tickets", () => {
+  it("requester and assigned provider can read; a stranger cannot", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "tickets", "t1")));
+    await assertSucceeds(getDoc(doc(db("evalA"), "tickets", "t1")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "tickets", "t1")));
+    await assertFails(getDoc(doc(db("intruder"), "tickets", "t1")));
+  });
+  it("a founder creates a ticket they own; cannot forge another requester", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "tickets", "t2"), {
+        kind: "service", title: "T", category: "marketing", urgency: "low", requiredOutcome: "x",
+        requesterId: "founder", requesterName: "founder", status: "open", notes: [], attachments: [],
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("founder"), "tickets", "t3"), {
+        kind: "service", title: "T", category: "marketing", urgency: "low", requiredOutcome: "x",
+        requesterId: "intruder", requesterName: "x", status: "open", notes: [], attachments: [],
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("meetings", () => {
+  it("requester + host read; requester creates; stranger denied", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "meetings", "mt1")));
+    await assertSucceeds(getDoc(doc(db("evalA"), "meetings", "mt1")));
+    await assertFails(getDoc(doc(db("intruder"), "meetings", "mt1")));
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "meetings", "mt2"), {
+        kind: "mentor", requesterId: "founder", requesterName: "founder", hostId: "evalA", hostName: "e",
+        topic: "x", proposedAt: Timestamp.now(), status: "requested", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("communications", () => {
+  it("addressee reads their own; append-only; sender is pinned", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "communications", "c1")));
+    await assertFails(getDoc(doc(db("intruder"), "communications", "c1")));
+    await assertFails(updateDoc(doc(db("mgr"), "communications", "c1"), { subject: "edited" }));
+    await assertFails(
+      setDoc(doc(db("mgr"), "communications", "c2"), {
+        entityType: "startup", entityId: "s1", channel: "in_app", subject: "s", body: "b",
+        sentBy: "founder", at: Timestamp.now(), // sentBy != caller
+      }),
+    );
+  });
+});
+
+describe("notificationTemplates", () => {
+  it("approved users read (so notifyStage works), only admins write", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "notificationTemplates", "application.submitted")));
+    await assertFails(getDoc(doc(db(), "notificationTemplates", "application.submitted")));
+    await assertSucceeds(
+      setDoc(doc(db("admin"), "notificationTemplates", "k2"), { key: "k2", channel: "email", subject: "s", body: "b", active: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }),
+    );
+    await assertFails(
+      setDoc(doc(db("mgr"), "notificationTemplates", "k3"), { key: "k3", channel: "email", subject: "s", body: "b", active: true, createdAt: Timestamp.now(), updatedAt: Timestamp.now() }),
+    );
+  });
+});
+
+describe("documents", () => {
+  it("uploader + visibleTo + staff read; others denied; append-only delete", async () => {
+    await assertSucceeds(getDoc(doc(db("mgr"), "documents", "d1")));       // staff
+    await assertSucceeds(getDoc(doc(db("founder"), "documents", "d1")));   // on visibleTo
+    await assertFails(getDoc(doc(db("intruder"), "documents", "d1")));
+    await assertFails(deleteDoc(doc(db("mgr"), "documents", "d1")));
+  });
+  it("a user uploads a doc they own; cannot forge uploadedBy", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "documents", "d2"), {
+        ownerType: "startup", ownerId: "s1", category: "pitch", title: "T", version: 1,
+        storagePath: "documents/startup/s1/x", downloadUrl: "https://x", uploadedBy: "founder",
+        visibleTo: [], supersededBy: null, createdAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("founder"), "documents", "d3"), {
+        ownerType: "startup", ownerId: "s1", category: "pitch", title: "T", version: 1,
+        storagePath: "x", downloadUrl: "https://x", uploadedBy: "mgr",
+        visibleTo: [], supersededBy: null, createdAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("training", () => {
+  it("approved users read the catalogue; staff manage courses", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "courses", "course1")));
+    await assertSucceeds(
+      setDoc(doc(db("mgr"), "courses", "c2"), {
+        title: "T", description: "d", track: "elective", sessions: [], active: true,
+        createdBy: "mgr", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("founder"), "courses", "c3"), {
+        title: "T", description: "d", track: "elective", sessions: [], active: true,
+        createdBy: "founder", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+  it("founder marks attendance but canNOT self-assess or self-complete", async () => {
+    await assertSucceeds(
+      updateDoc(doc(db("founder"), "enrollments", "course1_s1"), {
+        attendedSessionIds: ["s0"], status: "in_progress", updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      updateDoc(doc(db("founder"), "enrollments", "course1_s1"), { assessmentScore: 95, updatedAt: Timestamp.now() }),
+    );
+    await assertFails(
+      updateDoc(doc(db("founder"), "enrollments", "course1_s1"), {
+        status: "completed", certificateDocId: "x", updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+  it("staff records assessment and completes", async () => {
+    await assertSucceeds(
+      updateDoc(doc(db("mgr"), "enrollments", "course1_s1"), {
+        assessmentScore: 88, feedback: "good", status: "completed", certificateDocId: "cert1", updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+  it("a stranger cannot read another startup's enrollment", async () => {
+    await assertFails(getDoc(doc(db("intruder"), "enrollments", "course1_s1")));
+  });
+});
+
+describe("directory", () => {
+  it("approved users browse; staff curate; founders cannot write", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "directory", "dir1")));
+    await assertFails(getDoc(doc(db(), "directory", "dir1")));
+    await assertSucceeds(
+      setDoc(doc(db("mgr"), "directory", "dir2"), {
+        kind: "fablab", name: "Lab", category: "prototyping", description: "d", languages: [],
+        expertise: [], equipment: [{ name: "3D printer" }], services: [], active: true,
+        createdBy: "mgr", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("founder"), "directory", "dir3"), {
+        kind: "mentor", name: "X", category: "c", description: "d", languages: [],
+        expertise: [], equipment: [], services: [], active: true, createdBy: "founder",
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("graduation", () => {
+  it("staff write the scorecard; the founder reads their own; others denied", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("mgr"), "graduations", "s1"), {
+        startupId: "s1", startupName: "s1", cohortId: "open", founderId: "founder",
+        criteria: [], score: 50, createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }, { merge: true }),
+    );
+    await assertSucceeds(getDoc(doc(db("founder"), "graduations", "s1")));
+    await assertFails(getDoc(doc(db("intruder"), "graduations", "s1")));
+    await assertFails(
+      setDoc(doc(db("founder"), "graduations", "s1"), { score: 100 }, { merge: true }),
+    );
   });
 });

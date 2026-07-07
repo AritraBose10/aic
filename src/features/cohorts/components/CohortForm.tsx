@@ -107,7 +107,7 @@ export function CohortForm({ existing, onDone }: CohortFormProps) {
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="applicationOpenAt">Applications open</Label>
           <Input id="applicationOpenAt" type="date" {...form.register("applicationOpenAt")} />

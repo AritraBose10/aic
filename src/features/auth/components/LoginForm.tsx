@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { Building2 } from "lucide-react";
+import { Loader } from "@/components/Loader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -72,6 +73,7 @@ export function LoginForm() {
             )}
           </div>
           <Button type="submit" className="w-full" disabled={submitting}>
+            {submitting && <Loader size="sm" />}
             {submitting ? "Signing in..." : "Sign in"}
           </Button>
           <p className="text-center text-sm text-muted-foreground">

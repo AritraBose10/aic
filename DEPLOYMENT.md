@@ -1,9 +1,18 @@
-# Deployment & Day-15 Pilot Runbook
+# Deployment & Pilot Runbook
 
-Bengal Startup Ecosystem — Techno India Group / AIC. Next.js 16 + Firebase Auth + Firestore.
+Bengal Startup Ecosystem — Techno India Group / AIC. Next.js 16 + Firebase Auth + Firestore + Storage + Cloud Functions.
 
 These are the steps that must run on **your** machine / the Firebase console — they need
 an interactive browser login or console access that can't be automated from the build box.
+
+> **Phase 2 (training, graduation, directory, mentors, fab labs, services, helpdesk)** is built and
+> emulator-verified (`npm run test:rules` → 51, `npm run test:functions` → 11). Its Firestore rules
+> and the Cloud-Function-gated Phase-1 rules are **not deployed** — deploy them together with the
+> functions once on Blaze (§2b). New Phase-2 Firestore collections: `masters`, `tickets`, `meetings`,
+> `communications`, `notificationTemplates`, `documents`, `courses`, `enrollments`, `directory`,
+> `graduations`; plus a **Storage** bucket (`storage.rules`) for the document vault. Seed the
+> `masters` taxonomies (sectors, service/provider categories, training tracks) from **/admin/masters**
+> after go-live so the pickers populate.
 
 ---
 

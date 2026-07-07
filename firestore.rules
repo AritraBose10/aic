@@ -53,6 +53,13 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // --- masters (admin-editable taxonomies) ---
+    match /masters/{entryId} {
+      allow read: if isSignedIn() && isApproved();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
     // --- cohorts ---
     match /cohorts/{cohortId} {
       allow read: if isSignedIn() && isApproved();
@@ -189,6 +196,151 @@ service cloud.firestore {
         // Append-only: snapshots are never edited or removed once written.
         allow update, delete: if false;
       }
+    }
+
+    // ========================================================================
+    // Phase 2 — core primitives
+    // ========================================================================
+
+    // Tickets (services ECO-02 + helpdesk SUP-01): visible to staff, the
+    // requester, and the assigned provider. Ownership/kind are pinned.
+    match /tickets/{ticketId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.providerId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.status == 'open';
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (
+          (resource.data.requesterId == request.auth.uid || resource.data.providerId == request.auth.uid)
+          && request.resource.data.requesterId == resource.data.requesterId
+          && request.resource.data.providerId == resource.data.providerId
+          && request.resource.data.startupId == resource.data.startupId
+          && request.resource.data.kind == resource.data.kind
+          && request.resource.data.createdAt == resource.data.createdAt
+        )
+      );
+      allow delete: if false;
+    }
+
+    // Meetings/bookings (mentors ECO-03 + fab labs ECO-04): visible to staff,
+    // the requester, and the host.
+    match /meetings/{meetingId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.hostId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved()
+        && request.resource.data.requesterId == request.auth.uid
+        && request.resource.data.status == 'requested';
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (
+          (resource.data.requesterId == request.auth.uid || resource.data.hostId == request.auth.uid)
+          && request.resource.data.requesterId == resource.data.requesterId
+          && request.resource.data.hostId == resource.data.hostId
+          && request.resource.data.kind == resource.data.kind
+          && request.resource.data.startupId == resource.data.startupId
+          && request.resource.data.createdAt == resource.data.createdAt
+        )
+      );
+      allow delete: if false;
+    }
+
+    // Communication timeline (COM-02): append-only. Read by staff, the sender,
+    // or the addressee.
+    match /communications/{eventId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.sentBy == request.auth.uid ||
+        resource.data.toUserId == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved()
+        && request.resource.data.sentBy == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Notification templates (COM-01): any approved user may read (so a
+    // founder-triggered notifyStage can render), only admins edit. Templates
+    // are message shells, not sensitive data.
+    match /notificationTemplates/{templateId} {
+      allow read: if isSignedIn() && isApproved();
+      allow create, update: if isAdmin();
+      allow delete: if false;
+    }
+
+    // Document vault (DOC-01): `visibleTo` is the access list. Readable by
+    // staff, the uploader, or anyone on visibleTo. Append-only (versioning
+    // supersedes rather than overwrites).
+    match /documents/{documentId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.uploadedBy == request.auth.uid ||
+        request.auth.uid in resource.data.visibleTo
+      );
+      allow create: if isSignedIn() && isApproved()
+        && request.resource.data.uploadedBy == request.auth.uid
+        && request.resource.data.version is int;
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (resource.data.uploadedBy == request.auth.uid
+          && request.resource.data.uploadedBy == resource.data.uploadedBy)
+      );
+      allow delete: if false;
+    }
+
+    // ========================================================================
+    // Phase 2 — features
+    // ========================================================================
+
+    // Training courses (LMS): approved users read the catalogue, staff manage.
+    match /courses/{courseId} {
+      allow read: if isSignedIn() && isApproved();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    // Enrollments: founder owns their startup's enrollment (attendance,
+    // assignment) but may NOT self-assess, self-complete, or issue a
+    // certificate — those are staff-only writes. Staff write freely.
+    match /enrollments/{enrollmentId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create: if isSignedIn() && isApproved()
+        && role() == 'founder'
+        && request.resource.data.founderId == request.auth.uid
+        && request.resource.data.status == 'enrolled';
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (
+          resource.data.founderId == request.auth.uid
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.courseId == resource.data.courseId
+          && request.resource.data.startupId == resource.data.startupId
+          && request.resource.data.status in ['enrolled', 'in_progress']
+          && !request.resource.data.diff(resource.data).affectedKeys()
+               .hasAny(['assessmentScore', 'feedback', 'certificateDocId', 'completedAt'])
+        )
+      );
+      allow delete: if false;
+    }
+
+    // Ecosystem directory (ECO-01): approved users browse, staff curate.
+    match /directory/{entryId} {
+      allow read: if isSignedIn() && isApproved();
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    // Graduation scorecards (GRD): staff manage; the founder may read their own.
+    match /graduations/{startupId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create, update: if isStaff();
+      allow delete: if false;
     }
 
     // --- audit log ---

@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
 import { getFirestore, type Firestore } from "firebase/firestore";
 import { getFunctions, connectFunctionsEmulator, type Functions } from "firebase/functions";
+import { getStorage, type FirebaseStorage } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -21,12 +22,14 @@ let app: FirebaseApp | undefined;
 let auth: Auth;
 let db: Firestore;
 let functions: Functions;
+let storage: FirebaseStorage;
 
 if (typeof window !== "undefined") {
   app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   functions = getFunctions(app);
+  storage = getStorage(app);
   // Point at the local Functions emulator during `npm run dev` if it's running
   // (set NEXT_PUBLIC_USE_FUNCTIONS_EMULATOR=true). Prod uses deployed functions.
   if (process.env.NEXT_PUBLIC_USE_FUNCTIONS_EMULATOR === "true") {
@@ -36,7 +39,8 @@ if (typeof window !== "undefined") {
   auth = null as unknown as Auth;
   db = null as unknown as Firestore;
   functions = null as unknown as Functions;
+  storage = null as unknown as FirebaseStorage;
 }
 
-export { auth, db, functions };
+export { auth, db, functions, storage };
 export default app;

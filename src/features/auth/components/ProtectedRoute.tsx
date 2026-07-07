@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { PageLoader } from "@/components/PageLoader";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import type { Role } from "@/core/types";
 
@@ -35,11 +36,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }, [loading, firebaseUser, userDoc, allowedRoles, router]);
 
   if (loading || !firebaseUser || !userDoc || userDoc.approvalStatus !== "approved") {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-muted-foreground">
-        Loading...
-      </div>
-    );
+    return <PageLoader />;
   }
 
   if (allowedRoles && !allowedRoles.includes(userDoc.role)) {

@@ -99,7 +99,7 @@ export function BaselineKpiForm({ startupId, onDone }: { startupId: string; onDo
         )}
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="space-y-2">
           <Label htmlFor="customers">Customers</Label>
           <Input id="customers" type="number" min={0} {...form.register("customers")} />

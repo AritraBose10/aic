@@ -1,0 +1,18 @@
+rules_version = '2';
+
+// Document vault blobs (DOC-01). Access to a file's *metadata* (and therefore
+// its download URL) is governed by the Firestore `documents` collection rules;
+// here we require an authenticated user and cap upload size/scope. Per-object
+// RBAC at the Storage layer is a follow-on hardening step.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /documents/{allPaths=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+        && request.resource.size < 20 * 1024 * 1024;
+    }
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
