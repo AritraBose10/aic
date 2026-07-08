@@ -61,11 +61,17 @@ export function AppHeader() {
       </div>
 
       {/* Centre: page title — absolutely positioned so it's always centred */}
-      <span className="pointer-events-none absolute inset-x-0 flex justify-center">
-        <span className="text-sm font-semibold tracking-tight">
-          Bengal Startup Ecosystem
-        </span>
-      </span>
+      <div className="pointer-events-none absolute inset-x-0 flex items-center justify-center">
+        <div className="flex items-center gap-2 rounded-full border border-sky-100 bg-sky-50/50 px-3.5 py-1 text-sm font-medium backdrop-blur-sm dark:border-sky-900/50 dark:bg-sky-950/30">
+          <span className="relative flex size-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75"></span>
+            <span className="relative inline-flex size-2 rounded-full bg-sky-500"></span>
+          </span>
+          <span className="bg-gradient-to-r from-sky-600 via-sky-700 to-indigo-600 bg-clip-text font-semibold tracking-tight text-transparent dark:from-sky-400 dark:to-indigo-400">
+            Bengal Startup Ecosystem
+          </span>
+        </div>
+      </div>
 
       {/* Right: user info + sign out */}
       <div className="flex shrink-0 items-center gap-3 text-sm">
