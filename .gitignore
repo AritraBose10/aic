@@ -9,6 +9,11 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+aic-techno-firebase-adminsdk-fbsvc-ce0b037f88.json
+*-firebase-adminsdk-*.json
+key.json
+*key.json
+firebase-key.json
 
 # testing
 /coverage
