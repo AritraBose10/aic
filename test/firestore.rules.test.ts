@@ -55,6 +55,12 @@ async function seed() {
       user("founder", "founder"),
       user("intruder", "founder"),
       user("pending", "founder", "pending"),
+      // Phase 4 new roles: approved but pending identity verification, and a
+      // verified variant — both must still be denied everywhere on Day 1.
+      user("inv", "investor", "approved", { identityStatus: "pending_verification" }),
+      user("invV", "investor", "approved", { identityStatus: "verified" }),
+      user("ado", "probasi_adopter", "approved", { identityStatus: "pending_verification" }),
+      user("adoV", "probasi_adopter", "approved", { identityStatus: "verified" }),
     ]);
 
     const cohort = (id: string, status: string, extra = {}) =>
@@ -196,6 +202,63 @@ async function seed() {
       expertise: ["sales"], equipment: [], services: [], active: true, createdBy: "mgr",
       createdAt: now, updatedAt: now,
     });
+
+    // --- Phase 3 fixtures ---
+    await db.doc("consents/contactA_outreach").set({
+      startupId: "s1", founderId: "founder", contactId: "contactA", purpose: "outreach",
+      granted: true, source: "form", updatedAt: now,
+    });
+    await db.doc("crmContacts/contactA").set({
+      startupId: "s1", founderId: "founder", name: "Lead A", contributedByUid: "founder",
+      contributedByName: "founder", createdAt: now, updatedAt: now,
+    });
+    await db.doc("crmOpportunities/oppA").set({
+      startupId: "s1", founderId: "founder", title: "Deal A", stage: "qualified", value: 100000,
+      createdAt: now, updatedAt: now,
+    });
+    await db.doc("financeEntries/finA").set({
+      startupId: "s1", founderId: "founder", kind: "invoice", description: "Inv", amount: 5000,
+      paid: true, occurredAt: now, createdAt: now,
+    });
+    await db.doc("opsSummary/s1").set({
+      startupId: "s1", founderId: "founder", startupName: "s1", pipelineValue: 100000,
+      openOpportunities: 1, wonOpportunities: 0, wonValue: 0, invoicedTotal: 5000,
+      expenseTotal: 0, cashPosition: 5000, updatedAt: now,
+    });
+    await db.doc("ipCases/ipTicket1").set({
+      ticketId: "ipTicket1", startupId: "s1", founderId: "founder", ipType: "patent",
+      feeCredits: 0, createdAt: now, updatedAt: now,
+    });
+    await db.doc("ndaAgreements/nda1").set({
+      startupId: "s1", founderId: "founder", templateKey: "mutual", signerUid: "evalA",
+      signerName: "evalA", unlocksDocId: "d1", status: "pending", createdBy: "founder", createdAt: now,
+    });
+    await db.doc("campaigns/camp1").set({
+      startupId: "s1", founderId: "founder", name: "Q3 push", channel: "email",
+      brief: { segment: "SMB", valueProp: "v", goal: "demo" }, contactIds: ["contactA"],
+      status: "draft", createdAt: now, updatedAt: now,
+    });
+    await db.doc("aiUsage/use1").set({
+      startupId: "s1", uid: "founder", model: "stub", totalTokens: 100, at: now,
+    });
+
+    // --- Phase 4 fixtures ---
+    await db.doc("investors/invV").set({ uid: "invV", name: "Inv V", sectors: [], ticketMinLakh: 5, ticketMaxLakh: 50, geographies: [], stagePreferences: [], portfolio: "", languages: [], engagement: "active", createdAt: now, updatedAt: now });
+    await db.doc("startupInvestorProfiles/s1").set({
+      startupId: "s1", founderId: "founder", startupName: "s1", pitch: "p", traction: "t", team: "tm",
+      financialSummary: "f", fundingAskLakh: 100, useOfFunds: "u", documentIds: ["d1"], status: "published", createdAt: now, updatedAt: now,
+    });
+    await db.doc("startupInvestorProfiles/s_inc").set({
+      startupId: "s_inc", founderId: "founder", startupName: "s_inc", pitch: "p", traction: "t", team: "tm",
+      financialSummary: "f", fundingAskLakh: 50, useOfFunds: "u", documentIds: [], status: "in_review", createdAt: now, updatedAt: now,
+    });
+    await db.doc("dataRoomRequests/dr1").set({ startupId: "s1", founderId: "founder", startupName: "s1", investorUid: "invV", investorName: "Inv V", message: "m", status: "requested", createdAt: now });
+    await db.doc("dataRoomAccessLog/log1").set({ startupId: "s1", founderId: "founder", investorUid: "invV", action: "granted", at: now, by: "founder" });
+    await db.doc("dealEntries/deal1").set({ startupId: "s1", startupName: "s1", founderId: "founder", investorUid: "invV", investorName: "Inv V", stage: "interest", notes: "", createdBy: "invV", createdAt: now, updatedAt: now });
+    await db.doc("pitchEvents/pe1").set({ title: "Pitch", description: "d", at: now, status: "open", investorUids: ["invV"], shortlistStartupIds: ["s1"], shortlistFounderIds: ["founder"], createdBy: "mgr", createdAt: now, updatedAt: now });
+    await db.doc("adopters/adoV").set({ uid: "adoV", name: "Ado V", location: "London", sectorExpertise: [], languages: [], availability: "", contributionModes: ["mentor"], createdAt: now, updatedAt: now });
+    await db.doc("adoptionRequests/ar1").set({ startupId: "s1", founderId: "founder", startupName: "s1", adopterUid: "adoV", adopterName: "Ado V", modes: ["mentor"], message: "m", status: "requested", createdAt: now });
+    await db.doc("adoptionWorkspaces/s1_adoV").set({ startupId: "s1", founderId: "founder", startupName: "s1", adopterUid: "adoV", adopterName: "Ado V", modes: ["mentor"], goals: "", commitments: "", impact: { mentorHours: 0, salesLeads: 0, meetings: 0, fundsCommittedLakh: 0, introductions: 0, docsReviewed: 0 }, createdAt: now, updatedAt: now });
   });
 }
 
@@ -673,6 +736,352 @@ describe("graduation", () => {
     await assertFails(getDoc(doc(db("intruder"), "graduations", "s1")));
     await assertFails(
       setDoc(doc(db("founder"), "graduations", "s1"), { score: 100 }, { merge: true }),
+    );
+  });
+});
+
+// ===================== Phase 3 =====================
+
+describe("consent (AIO-04)", () => {
+  it("founder reads/owns; staff read; stranger denied; revoke is an update", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "consents", "contactA_outreach")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "consents", "contactA_outreach")));
+    await assertFails(getDoc(doc(db("intruder"), "consents", "contactA_outreach")));
+    await assertSucceeds(
+      updateDoc(doc(db("founder"), "consents", "contactA_outreach"), { granted: false, updatedAt: Timestamp.now() }),
+    );
+    await assertFails(deleteDoc(doc(db("founder"), "consents", "contactA_outreach")));
+  });
+  it("a founder cannot forge consent under another founder", async () => {
+    await assertFails(
+      setDoc(doc(db("intruder"), "consents", "x_outreach"), {
+        startupId: "s1", founderId: "founder", contactId: "x", purpose: "outreach",
+        granted: true, source: "f", updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("CRM + finance raw rows are founder-only (OPS-06)", () => {
+  it("owner reads their CRM/finance rows; STAFF cannot read raw rows", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "crmContacts", "contactA")));
+    await assertSucceeds(getDoc(doc(db("founder"), "crmOpportunities", "oppA")));
+    await assertSucceeds(getDoc(doc(db("founder"), "financeEntries", "finA")));
+    await assertFails(getDoc(doc(db("mgr"), "crmContacts", "contactA")));
+    await assertFails(getDoc(doc(db("mgr"), "crmOpportunities", "oppA")));
+    await assertFails(getDoc(doc(db("mgr"), "financeEntries", "finA")));
+  });
+  it("a sales mentor / staff may CONTRIBUTE a lead (create) without read access", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("mgr"), "crmContacts", "contribLead"), {
+        startupId: "s1", founderId: "founder", name: "Contributed", contributedByUid: "mgr",
+        contributedByName: "mgr", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+  it("finance entries are append-only", async () => {
+    await assertFails(updateDoc(doc(db("founder"), "financeEntries", "finA"), { amount: 1 }));
+    await assertFails(deleteDoc(doc(db("founder"), "financeEntries", "finA")));
+  });
+});
+
+describe("opsSummary rollup (OPS-06)", () => {
+  it("staff read the aggregate rollup; the founder owns it; a stranger cannot read", async () => {
+    await assertSucceeds(getDoc(doc(db("mgr"), "opsSummary", "s1")));
+    await assertSucceeds(getDoc(doc(db("founder"), "opsSummary", "s1")));
+    await assertFails(getDoc(doc(db("intruder"), "opsSummary", "s1")));
+  });
+});
+
+describe("IP support (IP-01/02)", () => {
+  it("founder opens a case companion + IP ticket; staff read; founder can't set fee credits", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "ipCases", "ipTicket1")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "ipCases", "ipTicket1")));
+    await assertFails(getDoc(doc(db("intruder"), "ipCases", "ipTicket1")));
+    // fee/credit is staff-only (IP desk)
+    await assertFails(updateDoc(doc(db("founder"), "ipCases", "ipTicket1"), { feeCredits: 500 }));
+    await assertSucceeds(updateDoc(doc(db("mgr"), "ipCases", "ipTicket1"), { feeCredits: 500, updatedAt: Timestamp.now() }));
+  });
+  it("a founder can open an IP-kind ticket via the shared tickets primitive", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "tickets", "ipTicketNew"), {
+        kind: "ip", title: "Patent", category: "patent", urgency: "medium", requiredOutcome: "file",
+        requesterId: "founder", requesterName: "founder", startupId: "s1", status: "open",
+        notes: [], attachments: [], createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+describe("NDA agreements (IP-04)", () => {
+  it("founder, signer, and staff read; a stranger cannot", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "ndaAgreements", "nda1")));
+    await assertSucceeds(getDoc(doc(db("evalA"), "ndaAgreements", "nda1"))); // signer
+    await assertSucceeds(getDoc(doc(db("mgr"), "ndaAgreements", "nda1")));
+    await assertFails(getDoc(doc(db("intruder"), "ndaAgreements", "nda1")));
+  });
+  it("the signer can mark it signed", async () => {
+    await assertSucceeds(
+      updateDoc(doc(db("evalA"), "ndaAgreements", "nda1"), { status: "signed", signedAt: Timestamp.now() }),
+    );
+  });
+});
+
+describe("outreach campaigns + AI usage (AIO)", () => {
+  it("campaigns are founder-owned; staff cannot read raw drafts; delete blocked", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "campaigns", "camp1")));
+    await assertFails(getDoc(doc(db("mgr"), "campaigns", "camp1")));
+    await assertFails(getDoc(doc(db("intruder"), "campaigns", "camp1")));
+    await assertFails(deleteDoc(doc(db("founder"), "campaigns", "camp1")));
+  });
+  it("a founder creates a campaign under their own id only", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "campaigns", "campNew"), {
+        startupId: "s1", founderId: "founder", name: "N", channel: "email",
+        brief: { segment: "x", valueProp: "v", goal: "g" }, contactIds: [], status: "draft",
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("intruder"), "campaigns", "campForge"), {
+        startupId: "s1", founderId: "founder", name: "N", channel: "email",
+        brief: { segment: "x", valueProp: "v", goal: "g" }, contactIds: [], status: "draft",
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+  it("aiUsage is server-authored only — clients cannot write; founder/staff read", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "aiUsage", "use1")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "aiUsage", "use1")));
+    await assertFails(getDoc(doc(db("intruder"), "aiUsage", "use1")));
+    await assertFails(
+      setDoc(doc(db("founder"), "aiUsage", "forge"), {
+        startupId: "s1", uid: "founder", model: "x", totalTokens: 1, at: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+// ===================== Phase 4 Day 1 — deny-by-default role audit =====================
+
+describe("Phase 4 roles: investor & probasi_adopter are denied by default", () => {
+  // Every sensitive collection seeded in the fixture, plus the five catalog
+  // collections now narrowed to incumbent roles. NONE should be readable by the
+  // new roles on Day 1 — verified or not — because no feature has granted access.
+  const READ_TARGETS: [string, string][] = [
+    ["startups", "s1"],
+    ["applications", "app_submitted"],
+    ["crmContacts", "contactA"],
+    ["crmOpportunities", "oppA"],
+    ["financeEntries", "finA"],
+    ["opsSummary", "s1"],
+    ["campaigns", "camp1"],
+    ["aiUsage", "use1"],
+    ["documents", "d1"],
+    ["tickets", "t1"],
+    ["meetings", "mt1"],
+    ["communications", "c1"],
+    ["consents", "contactA_outreach"],
+    ["ndaAgreements", "nda1"],
+    ["ipCases", "ipTicket1"],
+    ["graduations", "s1"],
+    ["enrollments", "course1_s1"],
+    // Catalog collections tightened to incumbents on Day 1:
+    ["masters", "m1"],
+    ["cohorts", "open"],
+    ["courses", "course1"],
+    ["directory", "dir1"],
+    ["notificationTemplates", "application.submitted"],
+  ];
+
+  for (const uid of ["inv", "invV", "ado"]) {
+    it(`${uid} is denied read on every collection`, async () => {
+      for (const [col, id] of READ_TARGETS) {
+        await assertFails(getDoc(doc(db(uid), col, id)));
+      }
+    });
+  }
+
+  it("new roles cannot write into feature collections", async () => {
+    await assertFails(
+      setDoc(doc(db("inv"), "startups", "hack"), {
+        founderId: "inv", name: "x", sector: "s", district: "d", stage: "MVP",
+        description: "d", teamMembers: [], teamMemberUids: [], createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("ado"), "crmContacts", "hack"), {
+        startupId: "s1", founderId: "ado", name: "x", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+    await assertFails(
+      setDoc(doc(db("inv"), "campaigns", "hack"), {
+        startupId: "s1", founderId: "inv", name: "x", channel: "email",
+        brief: { segment: "s", valueProp: "v", goal: "g" }, contactIds: [], status: "draft",
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+
+  it("a new-role user reads their OWN user doc but cannot self-verify identity", async () => {
+    await assertSucceeds(getDoc(doc(db("inv"), "users", "inv")));
+    // profile-only self edits still allowed
+    await assertSucceeds(
+      updateDoc(doc(db("inv"), "users", "inv"), { name: "New Name", updatedAt: Timestamp.now() }),
+    );
+    // self-setting identityStatus is NOT in the profile allow-list → denied
+    await assertFails(
+      updateDoc(doc(db("inv"), "users", "inv"), { identityStatus: "verified" }),
+    );
+  });
+
+  it("only an admin can verify a new role's identity", async () => {
+    await assertFails(
+      updateDoc(doc(db("mgr"), "users", "inv"), { identityStatus: "verified", updatedAt: Timestamp.now() }),
+    );
+    await assertSucceeds(
+      updateDoc(doc(db("admin"), "users", "inv"), {
+        identityStatus: "verified", identityVerifiedBy: "admin", identityVerifiedAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+
+  it("regression: incumbent roles still read the catalog collections", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "masters", "m1")));
+    await assertSucceeds(getDoc(doc(db("founder"), "cohorts", "open")));
+    await assertSucceeds(getDoc(doc(db("evalA"), "courses", "course1")));
+    await assertSucceeds(getDoc(doc(db("founder"), "directory", "dir1")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "notificationTemplates", "application.submitted")));
+  });
+
+  it("a new-role user can self-register as pending (create own user doc)", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("newinv"), "users", "newinv"), {
+        uid: "newinv", email: "newinv@x.com", name: "New Inv", role: "investor",
+        approvalStatus: "pending", identityStatus: "pending_verification",
+        createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+      }),
+    );
+  });
+});
+
+// ===================== Phase 4 — investor + adoption cross-role grants =====================
+
+describe("Phase 4: investor community", () => {
+  it("investor owns their own profile; staff read; others denied", async () => {
+    await assertSucceeds(getDoc(doc(db("invV"), "investors", "invV")));
+    await assertSucceeds(getDoc(doc(db("mgr"), "investors", "invV")));
+    await assertFails(getDoc(doc(db("founder"), "investors", "invV")));
+    await assertSucceeds(setDoc(doc(db("inv"), "investors", "inv"), {
+      uid: "inv", name: "x", sectors: [], ticketMinLakh: 1, ticketMaxLakh: 2, geographies: [], stagePreferences: [], portfolio: "", languages: [], engagement: "active", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
+    // a founder cannot create an investor profile
+    await assertFails(setDoc(doc(db("founder"), "investors", "founder"), {
+      uid: "founder", name: "x", sectors: [], ticketMinLakh: 1, ticketMaxLakh: 2, geographies: [], stagePreferences: [], portfolio: "", languages: [], engagement: "active", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
+  });
+
+  it("startup investor-facing profile: verified investor reads PUBLISHED only; unverified denied", async () => {
+    await assertSucceeds(getDoc(doc(db("invV"), "startupInvestorProfiles", "s1")));       // published
+    await assertFails(getDoc(doc(db("invV"), "startupInvestorProfiles", "s_inc")));        // in_review — not published
+    await assertFails(getDoc(doc(db("inv"), "startupInvestorProfiles", "s1")));            // unverified investor
+    await assertSucceeds(getDoc(doc(db("adoV"), "startupInvestorProfiles", "s1")));        // verified adopter discovery
+    await assertSucceeds(getDoc(doc(db("founder"), "startupInvestorProfiles", "s1")));     // owner
+  });
+
+  it("founder can't self-publish; staff can publish", async () => {
+    await assertFails(updateDoc(doc(db("founder"), "startupInvestorProfiles", "s_inc"), { status: "published" }));
+    await assertSucceeds(updateDoc(doc(db("founder"), "startupInvestorProfiles", "s_inc"), { status: "in_review", pitch: "p2" }));
+    await assertSucceeds(updateDoc(doc(db("mgr"), "startupInvestorProfiles", "s_inc"), { status: "published", reviewedBy: "mgr" }));
+  });
+
+  it("data room: verified investor requests; unverified cannot; founder decides", async () => {
+    await assertSucceeds(setDoc(doc(db("invV"), "dataRoomRequests", "drNew"), {
+      startupId: "s1", founderId: "founder", startupName: "s1", investorUid: "invV", investorName: "Inv V", message: "m", status: "requested", createdAt: Timestamp.now(),
+    }));
+    await assertFails(setDoc(doc(db("inv"), "dataRoomRequests", "drBad"), {
+      startupId: "s1", founderId: "founder", startupName: "s1", investorUid: "inv", investorName: "Inv", message: "m", status: "requested", createdAt: Timestamp.now(),
+    }));
+    await assertSucceeds(updateDoc(doc(db("founder"), "dataRoomRequests", "dr1"), { status: "approved", decidedBy: "founder", decidedAt: Timestamp.now() }));
+  });
+
+  it("deal pipeline: verified investor creates + advances stage (label only)", async () => {
+    await assertSucceeds(updateDoc(doc(db("invV"), "dealEntries", "deal1"), { stage: "diligence", updatedAt: Timestamp.now() }));
+    await assertSucceeds(updateDoc(doc(db("founder"), "dealEntries", "deal1"), { stage: "term", updatedAt: Timestamp.now() }));
+    await assertFails(getDoc(doc(db("intruder"), "dealEntries", "deal1")));
+  });
+
+  it("pitch event: invited verified investor + shortlisted founder read; feedback by investor", async () => {
+    await assertSucceeds(getDoc(doc(db("invV"), "pitchEvents", "pe1")));
+    await assertSucceeds(getDoc(doc(db("founder"), "pitchEvents", "pe1")));
+    await assertFails(getDoc(doc(db("inv"), "pitchEvents", "pe1")));   // not invited (and unverified)
+    await assertSucceeds(setDoc(doc(db("invV"), "pitchEvents", "pe1", "feedback", "invV"), {
+      investorUid: "invV", investorName: "Inv V", startupId: "s1", note: "great", at: Timestamp.now(),
+    }));
+  });
+});
+
+describe("Phase 4: Probasi adoption", () => {
+  it("adopter owns their profile; verification gates requests", async () => {
+    await assertSucceeds(getDoc(doc(db("adoV"), "adopters", "adoV")));
+    await assertFails(getDoc(doc(db("founder"), "adopters", "adoV")));
+    // verified adopter can request; unverified cannot
+    await assertSucceeds(setDoc(doc(db("adoV"), "adoptionRequests", "arNew"), {
+      startupId: "s1", founderId: "founder", startupName: "s1", adopterUid: "adoV", adopterName: "Ado V", modes: ["mentor"], message: "m", status: "requested", createdAt: Timestamp.now(),
+    }));
+    await assertFails(setDoc(doc(db("ado"), "adoptionRequests", "arBad"), {
+      startupId: "s1", founderId: "founder", startupName: "s1", adopterUid: "ado", adopterName: "Ado", modes: ["mentor"], message: "m", status: "requested", createdAt: Timestamp.now(),
+    }));
+  });
+
+  it("adoption workspace: founder + adopter member read/update; adopter updates impact", async () => {
+    await assertSucceeds(getDoc(doc(db("founder"), "adoptionWorkspaces", "s1_adoV")));
+    await assertSucceeds(getDoc(doc(db("adoV"), "adoptionWorkspaces", "s1_adoV")));
+    await assertFails(getDoc(doc(db("intruder"), "adoptionWorkspaces", "s1_adoV")));
+    await assertSucceeds(updateDoc(doc(db("adoV"), "adoptionWorkspaces", "s1_adoV"), { goals: "grow", updatedAt: Timestamp.now() }));
+  });
+
+  it("ABS-09: verified adopter records OWN acknowledgement consent, but NOT outreach consent", async () => {
+    await assertSucceeds(setDoc(doc(db("adoV"), "consents", "adoV_coi"), {
+      startupId: "adoV", founderId: "adoV", contactId: "adoV", purpose: "coi", granted: true, source: "ack", updatedAt: Timestamp.now(),
+    }));
+    await assertFails(setDoc(doc(db("adoV"), "consents", "adoV_outreach"), {
+      startupId: "adoV", founderId: "adoV", contactId: "adoV", purpose: "outreach", granted: true, source: "x", updatedAt: Timestamp.now(),
+    }));
+  });
+
+  it("ABS-06: adopter with an active workspace contributes a CRM lead; without one, denied", async () => {
+    await assertSucceeds(setDoc(doc(db("adoV"), "crmContacts", "leadFromAdopter"), {
+      startupId: "s1", founderId: "founder", name: "Lead", contributedByUid: "adoV", contributedByName: "Ado V", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
+    // s_inc has no workspace for adoV → denied
+    await assertFails(setDoc(doc(db("adoV"), "crmContacts", "leadNoWs"), {
+      startupId: "s_inc", founderId: "founder", name: "Lead", contributedByUid: "adoV", contributedByName: "Ado V", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
+  });
+});
+
+// ===================== Hardening — duplicate candidates (IDM-02) =====================
+
+describe("duplicateCandidates (IDM-02) — staff-only review queue", () => {
+  it("staff read/write; non-staff denied; client can't forge an identity.merge audit entry", async () => {
+    const cand = {
+      subject: "person", recordType: "users", recordIdA: "a", recordIdB: "b", labelA: "A", labelB: "B",
+      matchReason: "name+phone", matchedOn: ["name", "phone"], status: "open", detectedBy: "scan",
+      createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    };
+    await assertSucceeds(setDoc(doc(db("mgr"), "duplicateCandidates", "users__a__b"), cand));
+    await assertSucceeds(getDoc(doc(db("admin"), "duplicateCandidates", "users__a__b")));
+    await assertFails(getDoc(doc(db("founder"), "duplicateCandidates", "users__a__b")));
+    await assertFails(setDoc(doc(db("founder"), "duplicateCandidates", "users__x__y"), cand));
+    await assertFails(getDoc(doc(db("invV"), "duplicateCandidates", "users__a__b")));
+
+    // The tamper-proof merge audit action can't be written by a client.
+    await assertFails(
+      setDoc(doc(db("admin"), "auditLog", "forge"), {
+        actorId: "admin", actorRole: "admin", action: "identity.merge", entityType: "identity",
+        entityId: "x", timestamp: Timestamp.now(),
+      }),
     );
   });
 });

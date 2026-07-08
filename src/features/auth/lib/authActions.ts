@@ -31,6 +31,10 @@ export async function registerUser(input: RegisterInput): Promise<void> {
   try {
     await updateProfile(credential.user, { displayName: input.name });
 
+    // The two self-service Phase 4 roles additionally require admin identity
+    // verification before any sensitive access (kept separate from approval).
+    const needsIdentity = input.role === "investor" || input.role === "probasi_adopter";
+
     await setDoc(doc(db, "users", credential.user.uid), {
       uid: credential.user.uid,
       email,
@@ -38,6 +42,7 @@ export async function registerUser(input: RegisterInput): Promise<void> {
       phone: input.phone ?? null,
       role: input.role,
       approvalStatus: "pending",
+      ...(needsIdentity ? { identityStatus: "pending_verification" } : {}),
       registrationNote: input.registrationNote ?? null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -86,6 +91,52 @@ export async function approveUser(
     action: "user.approve",
     entityType: "user",
     entityId: targetUid,
+  });
+}
+
+/**
+ * Phase 4: admin marks a self-service role's identity as verified. Separate from
+ * approval — a user can be `approved` for platform access yet not `verified` for
+ * sensitive investor/adoption access. Admin-only (enforced by the users rule,
+ * which lets only an admin write fields outside a user's own profile allow-list).
+ */
+export async function verifyIdentity(
+  targetUid: string,
+  adminUid: string,
+  adminRole: Role,
+): Promise<void> {
+  await updateDoc(doc(db, "users", targetUid), {
+    identityStatus: "verified",
+    identityVerifiedBy: adminUid,
+    identityVerifiedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+  await logAuditEvent({
+    actorId: adminUid,
+    actorRole: adminRole,
+    action: "user.identity_verify",
+    entityType: "user",
+    entityId: targetUid,
+  });
+}
+
+export async function rejectIdentity(
+  targetUid: string,
+  adminUid: string,
+  adminRole: Role,
+  reason: string,
+): Promise<void> {
+  await updateDoc(doc(db, "users", targetUid), {
+    identityStatus: "unverified",
+    updatedAt: serverTimestamp(),
+  });
+  await logAuditEvent({
+    actorId: adminUid,
+    actorRole: adminRole,
+    action: "user.identity_reject",
+    entityType: "user",
+    entityId: targetUid,
+    details: { reason },
   });
 }
 

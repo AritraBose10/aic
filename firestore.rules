@@ -31,6 +31,20 @@ service cloud.firestore {
       return isAdmin() || isCohortManager();
     }
 
+    // --- Phase 4: deny-by-default gate for the two new self-service roles ---
+    // Every collection that previously read as "any approved user" is narrowed
+    // to incumbent roles so `investor` / `probasi_adopter` are denied by
+    // default. Phase 4 feature rules re-grant them ONLY what each feature needs,
+    // and only when identity-verified (isVerified).
+    function isIncumbentRole() {
+      return isSignedIn() && role() in ['admin', 'cohort_manager', 'evaluator', 'founder'];
+    }
+    // Identity verification for the new roles (used by Phase 4 feature rules as
+    // they are added; unset for incumbent roles).
+    function isVerified() {
+      return isSignedIn() && userDoc(request.auth.uid).get('identityStatus', 'unverified') == 'verified';
+    }
+
     // --- users ---
     // A user always owns their own doc. Admin approval is the only path to
     // becoming `approved` and the only path to changing `role`.
@@ -55,14 +69,14 @@ service cloud.firestore {
 
     // --- masters (admin-editable taxonomies) ---
     match /masters/{entryId} {
-      allow read: if isSignedIn() && isApproved();
+      allow read: if isSignedIn() && isApproved() && isIncumbentRole();
       allow create, update: if isAdmin();
       allow delete: if false;
     }
 
     // --- cohorts ---
     match /cohorts/{cohortId} {
-      allow read: if isSignedIn() && isApproved();
+      allow read: if isSignedIn() && isApproved() && isIncumbentRole();
       allow create: if isStaff();
       // selectedCount is maintained only by the recordDecision Cloud Function
       // (Admin SDK bypasses rules); staff can't move it via the client.
@@ -210,7 +224,7 @@ service cloud.firestore {
         resource.data.requesterId == request.auth.uid ||
         resource.data.providerId == request.auth.uid
       );
-      allow create: if isSignedIn() && isApproved()
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.status == 'open';
       allow update: if isSignedIn() && (
@@ -235,7 +249,7 @@ service cloud.firestore {
         resource.data.requesterId == request.auth.uid ||
         resource.data.hostId == request.auth.uid
       );
-      allow create: if isSignedIn() && isApproved()
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
         && request.resource.data.requesterId == request.auth.uid
         && request.resource.data.status == 'requested';
       allow update: if isSignedIn() && (
@@ -260,16 +274,16 @@ service cloud.firestore {
         resource.data.sentBy == request.auth.uid ||
         resource.data.toUserId == request.auth.uid
       );
-      allow create: if isSignedIn() && isApproved()
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
         && request.resource.data.sentBy == request.auth.uid;
       allow update, delete: if false;
     }
 
-    // Notification templates (COM-01): any approved user may read (so a
-    // founder-triggered notifyStage can render), only admins edit. Templates
+    // Notification templates (COM-01): any approved incumbent user may read (so
+    // a founder-triggered notifyStage can render), only admins edit. Templates
     // are message shells, not sensitive data.
     match /notificationTemplates/{templateId} {
-      allow read: if isSignedIn() && isApproved();
+      allow read: if isSignedIn() && isApproved() && isIncumbentRole();
       allow create, update: if isAdmin();
       allow delete: if false;
     }
@@ -283,7 +297,7 @@ service cloud.firestore {
         resource.data.uploadedBy == request.auth.uid ||
         request.auth.uid in resource.data.visibleTo
       );
-      allow create: if isSignedIn() && isApproved()
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
         && request.resource.data.uploadedBy == request.auth.uid
         && request.resource.data.version is int;
       allow update: if isSignedIn() && (
@@ -298,9 +312,9 @@ service cloud.firestore {
     // Phase 2 — features
     // ========================================================================
 
-    // Training courses (LMS): approved users read the catalogue, staff manage.
+    // Training courses (LMS): approved incumbent users read the catalogue, staff manage.
     match /courses/{courseId} {
-      allow read: if isSignedIn() && isApproved();
+      allow read: if isSignedIn() && isApproved() && isIncumbentRole();
       allow create, update: if isStaff();
       allow delete: if false;
     }
@@ -329,9 +343,11 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // Ecosystem directory (ECO-01): approved users browse, staff curate.
+    // Ecosystem directory (ECO-01): approved incumbent users browse, staff
+    // curate. Phase 4 will re-grant verified investors/adopters read access
+    // when the discovery features that need it are built (with approval).
     match /directory/{entryId} {
-      allow read: if isSignedIn() && isApproved();
+      allow read: if isSignedIn() && isApproved() && isIncumbentRole();
       allow create, update: if isStaff();
       allow delete: if false;
     }
@@ -339,6 +355,331 @@ service cloud.firestore {
     // Graduation scorecards (GRD): staff manage; the founder may read their own.
     match /graduations/{startupId} {
       allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create, update: if isStaff();
+      allow delete: if false;
+    }
+
+    // ========================================================================
+    // Phase 3
+    // ========================================================================
+
+    // Contact consent (AIO-04): the owning founder or staff read/write; revoke
+    // is an update (granted:false), never a delete (kept for audit).
+    match /consents/{consentId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create: if isSignedIn() && isApproved()
+        && request.resource.data.founderId == request.auth.uid
+        && (
+          isIncumbentRole() ||
+          // Phase 4: a verified self-service role records its OWN acknowledgements
+          // (ABS-09 / INV-07) — never contact outreach consent.
+          (isVerified() && request.resource.data.purpose in
+            ['coi', 'confidentiality', 'investment_disclaimer', 'data_use'])
+        );
+      allow update: if isSignedIn() && (
+        isStaff() || resource.data.founderId == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    // CRM contacts/leads (OPS-01/02): raw rows are the founder's own — staff do
+    // NOT read them (OPS-06 keeps raw detail private). A sales mentor / staff
+    // may CONTRIBUTE a lead (create with attribution) without read access.
+    match /crmContacts/{contactId} {
+      allow read: if isSignedIn() && resource.data.founderId == request.auth.uid;
+      allow create: if isSignedIn() && isApproved() && (
+        (isIncumbentRole() && (request.resource.data.founderId == request.auth.uid || isStaff())) ||
+        // ABS-06: a verified Probasi adopter contributes a lead (attributed to
+        // self) into a startup's CRM, but ONLY if they have an active adoption
+        // workspace with that startup — founder approval is implicit in the
+        // accepted workspace (deterministic id `${startupId}_${uid}`).
+        (isVerified() && role() == 'probasi_adopter'
+          && request.resource.data.contributedByUid == request.auth.uid
+          && exists(/databases/$(database)/documents/adoptionWorkspaces/$(request.resource.data.startupId + '_' + request.auth.uid)))
+      );
+      allow update: if isSignedIn() && (
+        resource.data.founderId == request.auth.uid || isStaff()
+      );
+      allow delete: if false;
+    }
+
+    // CRM opportunities/pipeline: founder-owned; raw rows not staff-readable.
+    match /crmOpportunities/{oppId} {
+      allow read: if isSignedIn() && resource.data.founderId == request.auth.uid;
+      allow create, update: if isSignedIn() && isApproved() && isIncumbentRole()
+        && request.resource.data.founderId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Finance entries (OPS-03): raw invoices/expenses are founder-owned and
+    // never staff-readable (OPS-06 — staff see the opsSummary rollup instead).
+    match /financeEntries/{entryId} {
+      allow read: if isSignedIn() && resource.data.founderId == request.auth.uid;
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
+        && request.resource.data.founderId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Operations mode config (OPS-07): founder-owned, staff may read.
+    match /opsConfig/{startupId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create, update: if isSignedIn() && isApproved() && isIncumbentRole()
+        && request.resource.data.founderId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Ops rollup (OPS-06): the non-sensitive summary staff DO read (aggregate
+    // only). Written by the owning founder's client; never contains raw rows.
+    match /opsSummary/{startupId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create, update: if isSignedIn() && isIncumbentRole() && (
+        isStaff() || request.resource.data.founderId == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    // IP case companion (IP-02): IP-only metadata alongside the core/tickets
+    // ticket that drives the workflow. Founder opens; staff (IP desk) update
+    // fee/credits. The ticket itself is governed by the tickets rule (kind "ip").
+    match /ipCases/{ticketId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.founderId == request.auth.uid);
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole()
+        && request.resource.data.founderId == request.auth.uid;
+      allow update: if isSignedIn() && isStaff();
+      allow delete: if false;
+    }
+
+    // Outreach campaigns (AIO): founder-owned; raw drafts not staff-readable
+    // (dashboard sees outcomes via the opsSummary rollup instead). "Sent" status
+    // and approval are set by the client; the strong guardrail (consent filtering
+    // before the prompt) is enforced server-side in the core/ai function.
+    match /campaigns/{campaignId} {
+      allow read: if isSignedIn() && resource.data.founderId == request.auth.uid;
+      allow create, update: if isSignedIn() && isApproved() && isIncumbentRole()
+        && request.resource.data.founderId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // AI usage log (AIO-04 / AI-C05 / AIS-08): written ONLY by the core/ai and
+    // core/search Cloud Functions (Admin SDK bypasses rules); clients can never
+    // write. The owning user and staff may read it for transparency/cost review.
+    match /aiUsage/{usageId} {
+      allow read: if isSignedIn() && (isStaff() || resource.data.uid == request.auth.uid);
+      allow write: if false;
+    }
+
+    // Search index (AIS): an internal retrieval index maintained ONLY by the
+    // core/search indexer (Admin SDK). Clients never read or write it — reading
+    // it directly would bypass the per-query permission filter.
+    match /searchIndex/{entryId} {
+      allow read, write: if false;
+    }
+
+    // NDA agreements (IP-04): readable by staff, the owning founder, or the
+    // signer. The actual access grant writes the target document's visibleTo,
+    // which is separately gated by the documents rule (owner/staff only).
+    match /ndaAgreements/{ndaId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.signerUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && isIncumbentRole() && (
+        isStaff() || request.resource.data.founderId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.signerUid == request.auth.uid
+      );
+      allow delete: if false;
+    }
+
+    // ========================================================================
+    // Phase 4 — investor community (deny-by-default; new-role grants require isVerified)
+    // ========================================================================
+
+    // Investor profile (INV-01): the investor owns their own; staff read all.
+    // Creating a profile does not require verification (admin verifies the
+    // person separately) — only role==investor writing their own doc.
+    match /investors/{uid} {
+      allow read: if isSignedIn() && (isStaff() || request.auth.uid == uid);
+      allow create, update: if isSignedIn() && isApproved()
+        && request.auth.uid == uid && role() == 'investor';
+      allow delete: if false;
+    }
+
+    // Founder investor-facing profile (INV-02): founder owns draft/in_review;
+    // staff review + publish; a VERIFIED investor reads ONLY published rows.
+    match /startupInvestorProfiles/{startupId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        (isVerified() && resource.data.status == 'published'
+          && role() in ['investor', 'probasi_adopter'])
+      );
+      // Founder creates/edits their own; may only set draft/in_review — never publish.
+      allow create: if isSignedIn() && isApproved() && role() == 'founder'
+        && request.resource.data.founderId == request.auth.uid
+        && request.resource.data.status in ['draft', 'in_review'];
+      allow update: if isSignedIn() && (
+        (isStaff()
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.startupId == resource.data.startupId) ||
+        (role() == 'founder'
+          && resource.data.founderId == request.auth.uid
+          && request.resource.data.founderId == resource.data.founderId
+          && request.resource.data.startupId == resource.data.startupId
+          && request.resource.data.status in ['draft', 'in_review'])
+      );
+      allow delete: if false;
+    }
+
+    // Data room requests (INV-04): a VERIFIED investor requests; the owning
+    // founder (or staff) decides. Readable by staff, the founder, or the
+    // requesting investor.
+    match /dataRoomRequests/{reqId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.investorUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && isVerified() && role() == 'investor'
+        && request.resource.data.investorUid == request.auth.uid
+        && request.resource.data.status == 'requested';
+      // Founder/staff decide; the founder can't reassign the request.
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (resource.data.founderId == request.auth.uid
+          && request.resource.data.investorUid == resource.data.investorUid
+          && request.resource.data.founderId == resource.data.founderId)
+      );
+      allow delete: if false;
+    }
+
+    // Data room access log (INV-04): append-only. Written by the founder on
+    // grant and by the investor on view; read by staff, founder, or that investor.
+    match /dataRoomAccessLog/{logId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.investorUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && (
+        request.resource.data.founderId == request.auth.uid ||
+        (isVerified() && role() == 'investor'
+          && request.resource.data.investorUid == request.auth.uid)
+      );
+      allow update, delete: if false;
+    }
+
+    // Pitch events (INV-05): staff manage; a VERIFIED invited investor or a
+    // shortlisted founder reads the events they belong to.
+    match /pitchEvents/{eventId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        (isVerified() && role() == 'investor' && request.auth.uid in resource.data.investorUids) ||
+        (role() == 'founder' && request.auth.uid in resource.data.shortlistFounderIds)
+      );
+      allow create, update: if isStaff();
+      allow delete: if false;
+
+      // Feedback: one doc per investor, keyed by uid. Staff + the author read.
+      match /feedback/{investorUid} {
+        allow read: if isSignedIn() && (isStaff() || request.auth.uid == investorUid);
+        allow create, update: if isSignedIn() && isVerified() && role() == 'investor'
+          && request.auth.uid == investorUid
+          && request.resource.data.investorUid == investorUid;
+        allow delete: if false;
+      }
+    }
+
+    // Deal pipeline (INV-06 / INV-07): status labels only, never a transaction.
+    // Readable by staff, the founder, or the investor party.
+    match /dealEntries/{dealId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.investorUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && (
+        isStaff() ||
+        (isVerified() && role() == 'investor'
+          && request.resource.data.investorUid == request.auth.uid)
+      );
+      allow update: if isSignedIn()
+        && (isStaff() || resource.data.investorUid == request.auth.uid || resource.data.founderId == request.auth.uid)
+        && request.resource.data.investorUid == resource.data.investorUid
+        && request.resource.data.founderId == resource.data.founderId;
+      allow delete: if false;
+    }
+
+    // ========================================================================
+    // Phase 4 — Probasi adoption program (ABS)
+    // ========================================================================
+
+    // Adopter profile (ABS-01): the adopter owns their own; staff read all.
+    match /adopters/{uid} {
+      allow read: if isSignedIn() && (isStaff() || request.auth.uid == uid);
+      allow create, update: if isSignedIn() && isApproved()
+        && request.auth.uid == uid && role() == 'probasi_adopter';
+      allow delete: if false;
+    }
+
+    // Adoption requests (ABS-03/04): a VERIFIED adopter requests; the owning
+    // founder (or staff) decides. Read by staff, founder, or the adopter.
+    match /adoptionRequests/{reqId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.adopterUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && isVerified() && role() == 'probasi_adopter'
+        && request.resource.data.adopterUid == request.auth.uid
+        && request.resource.data.status == 'requested';
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        (resource.data.founderId == request.auth.uid
+          && request.resource.data.adopterUid == resource.data.adopterUid
+          && request.resource.data.founderId == resource.data.founderId)
+      );
+      allow delete: if false;
+    }
+
+    // Adoption workspace (ABS-05): id == `${startupId}_${adopterUid}`. Read/write
+    // by staff, the owning founder, or the adopter member. Created on accept by
+    // the founder (or staff).
+    match /adoptionWorkspaces/{workspaceId} {
+      allow read: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        resource.data.adopterUid == request.auth.uid
+      );
+      allow create: if isSignedIn() && isApproved() && (
+        isStaff() || request.resource.data.founderId == request.auth.uid
+      );
+      allow update: if isSignedIn() && (
+        isStaff() ||
+        resource.data.founderId == request.auth.uid ||
+        (resource.data.adopterUid == request.auth.uid && isVerified())
+      ) && request.resource.data.founderId == resource.data.founderId
+        && request.resource.data.adopterUid == resource.data.adopterUid;
+      allow delete: if false;
+    }
+
+    // Login events (SEC-05): a user's own device/login history for new-device
+    // detection. Append-only, own-uid only.
+    match /loginEvents/{eventId} {
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // Duplicate-identity review queue (IDM-02 / NFR-09): staff-only. Created by
+    // the admin scan (staff); status flipped to "merged" by the mergeIdentities
+    // Cloud Function (Admin SDK). Clients never see or touch it beyond staff.
+    match /duplicateCandidates/{candidateId} {
+      allow read: if isStaff();
       allow create, update: if isStaff();
       allow delete: if false;
     }
@@ -351,7 +692,7 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if isSignedIn()
         && request.resource.data.actorId == request.auth.uid
-        && !(request.resource.data.action in ['application.decide', 'application.reopen', 'application.submit']);
+        && !(request.resource.data.action in ['application.decide', 'application.reopen', 'application.submit', 'identity.merge']);
       allow update, delete: if false;
     }
   }

@@ -3,7 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { AppHeader } from "@/components/AppHeader";
+import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { useCohort } from "@/features/cohorts/hooks/useCohort";
 import { CommitteeReviewView } from "@/features/applications/components/CommitteeReviewView";
@@ -18,7 +18,7 @@ export default function CohortApplicationsPage({
 
   return (
     <ProtectedRoute allowedRoles={["admin", "cohort_manager"]}>
-      <AppHeader />
+      <AppLayout>
       <div className="mx-auto w-full max-w-3xl px-6 py-10">
         <Link href="/cohorts" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" />
@@ -29,6 +29,7 @@ export default function CohortApplicationsPage({
         </h1>
         <CommitteeReviewView cohortId={cohortId} />
       </div>
+      </AppLayout>
     </ProtectedRoute>
   );
 }

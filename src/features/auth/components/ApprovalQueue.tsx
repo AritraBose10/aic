@@ -31,6 +31,8 @@ const ROLE_LABEL: Record<UserDoc["role"], string> = {
   cohort_manager: "Cohort Manager",
   evaluator: "Evaluator",
   founder: "Founder",
+  investor: "Investor",
+  probasi_adopter: "Probasi adopter",
 };
 
 export function ApprovalQueue() {

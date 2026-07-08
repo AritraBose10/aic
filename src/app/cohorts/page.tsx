@@ -1,6 +1,6 @@
 "use client";
 
-import { AppHeader } from "@/components/AppHeader";
+import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { CohortsManagerView } from "@/features/cohorts/components/CohortsManagerView";
@@ -26,10 +26,11 @@ function CohortsContent() {
 export default function CohortsPage() {
   return (
     <ProtectedRoute>
-      <AppHeader />
+      <AppLayout>
       <div className="mx-auto w-full max-w-5xl px-6 py-10">
         <CohortsContent />
       </div>
+      </AppLayout>
     </ProtectedRoute>
   );
 }

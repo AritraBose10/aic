@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { PageLoader } from "@/components/PageLoader";
+import { SessionGuard } from "@/features/auth/components/SessionGuard";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import type { Role } from "@/core/types";
 
@@ -43,5 +44,10 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     return null;
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      <SessionGuard />
+      {children}
+    </>
+  );
 }

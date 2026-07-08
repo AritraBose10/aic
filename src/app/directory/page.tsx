@@ -1,6 +1,6 @@
 "use client";
 
-import { AppHeader } from "@/components/AppHeader";
+import { AppLayout } from "@/components/AppLayout";
 import { ProtectedRoute } from "@/features/auth/components/ProtectedRoute";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { DirectoryManager } from "@/features/directory/components/DirectoryManager";
@@ -19,11 +19,12 @@ function DirectoryContent() {
 export default function DirectoryPage() {
   return (
     <ProtectedRoute>
-      <AppHeader />
+      <AppLayout>
       <div className="mx-auto w-full max-w-4xl px-6 py-10">
         <h1 className="mb-6 text-2xl font-semibold tracking-tight">Ecosystem directory</h1>
         <DirectoryContent />
       </div>
+      </AppLayout>
     </ProtectedRoute>
   );
 }

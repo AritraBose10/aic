@@ -15,6 +15,7 @@ import {
 import { useCohorts } from "@/features/cohorts/hooks/useCohorts";
 import { useAllApplications, useAllStartups } from "@/features/dashboard/hooks/usePortfolio";
 import { EcosystemPanel } from "@/features/dashboard/components/EcosystemPanel";
+import { OpsRollupPanel } from "@/features/dashboard/components/OpsRollupPanel";
 import type { ApplicationStatus } from "@/core/types";
 
 const ALL = "all";
@@ -213,6 +214,9 @@ export function PortfolioDashboard() {
 
       {/* Ecosystem support KPIs (Phase 2) */}
       <EcosystemPanel />
+
+      {/* Startup operations rollup (Phase 3, OPS-06) */}
+      <OpsRollupPanel />
 
       {/* Incubatees */}
       <Card>

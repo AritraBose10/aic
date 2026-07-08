@@ -1,11 +1,35 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.submitApplication = exports.reopenDecision = exports.recordDecision = void 0;
+exports.submitApplication = exports.reopenDecision = exports.recordDecision = exports.indexDealEntry = exports.indexAdoptionWorkspace = exports.indexApplication = exports.indexDocument = exports.indexInvestorProfile = exports.indexStartup = exports.deactivateAccount = exports.runRetentionCleanupNow = exports.retentionCleanup = exports.revokeMySessions = exports.mergeIdentities = exports.searchQuery = exports.generateOutreachDraft = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
 (0, app_1.initializeApp)();
 const db = (0, firestore_1.getFirestore)();
+// core/ai — server-side Claude wrapper for AI outreach (Blaze-gated, emulator-testable).
+var ai_1 = require("./ai");
+Object.defineProperty(exports, "generateOutreachDraft", { enumerable: true, get: function () { return ai_1.generateOutreachDraft; } });
+// core/search — permission-aware AI search / RAG (Blaze-gated, emulator-testable).
+var search_1 = require("./search");
+Object.defineProperty(exports, "searchQuery", { enumerable: true, get: function () { return search_1.searchQuery; } });
+// Duplicate identity merge (IDM-02) — Admin SDK reference rewrite (Blaze-gated).
+var merge_1 = require("./merge");
+Object.defineProperty(exports, "mergeIdentities", { enumerable: true, get: function () { return merge_1.mergeIdentities; } });
+// SEC-05 session revocation + §9.2 retention cleanup + data-subject deactivation (Blaze-gated).
+var session_1 = require("./session");
+Object.defineProperty(exports, "revokeMySessions", { enumerable: true, get: function () { return session_1.revokeMySessions; } });
+var retention_1 = require("./retention");
+Object.defineProperty(exports, "retentionCleanup", { enumerable: true, get: function () { return retention_1.retentionCleanup; } });
+Object.defineProperty(exports, "runRetentionCleanupNow", { enumerable: true, get: function () { return retention_1.runRetentionCleanupNow; } });
+Object.defineProperty(exports, "deactivateAccount", { enumerable: true, get: function () { return retention_1.deactivateAccount; } });
+// core/search indexer — Firestore triggers that maintain the searchIndex (Blaze-gated).
+var searchIndexer_1 = require("./searchIndexer");
+Object.defineProperty(exports, "indexStartup", { enumerable: true, get: function () { return searchIndexer_1.indexStartup; } });
+Object.defineProperty(exports, "indexInvestorProfile", { enumerable: true, get: function () { return searchIndexer_1.indexInvestorProfile; } });
+Object.defineProperty(exports, "indexDocument", { enumerable: true, get: function () { return searchIndexer_1.indexDocument; } });
+Object.defineProperty(exports, "indexApplication", { enumerable: true, get: function () { return searchIndexer_1.indexApplication; } });
+Object.defineProperty(exports, "indexAdoptionWorkspace", { enumerable: true, get: function () { return searchIndexer_1.indexAdoptionWorkspace; } });
+Object.defineProperty(exports, "indexDealEntry", { enumerable: true, get: function () { return searchIndexer_1.indexDealEntry; } });
 /** Resolve + authorize the caller from their (server-trusted) auth uid. */
 async function requireApprovedUser(req, roles) {
     if (!req.auth)

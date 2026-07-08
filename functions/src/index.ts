@@ -5,6 +5,26 @@ import { FieldValue, getFirestore, type Transaction } from "firebase-admin/fires
 initializeApp();
 const db = getFirestore();
 
+// core/ai — server-side Claude wrapper for AI outreach (Blaze-gated, emulator-testable).
+export { generateOutreachDraft } from "./ai";
+
+// core/search — permission-aware AI search / RAG (Blaze-gated, emulator-testable).
+export { searchQuery } from "./search";
+// Duplicate identity merge (IDM-02) — Admin SDK reference rewrite (Blaze-gated).
+export { mergeIdentities } from "./merge";
+// SEC-05 session revocation + §9.2 retention cleanup + data-subject deactivation (Blaze-gated).
+export { revokeMySessions } from "./session";
+export { retentionCleanup, runRetentionCleanupNow, deactivateAccount } from "./retention";
+// core/search indexer — Firestore triggers that maintain the searchIndex (Blaze-gated).
+export {
+  indexStartup,
+  indexInvestorProfile,
+  indexDocument,
+  indexApplication,
+  indexAdoptionWorkspace,
+  indexDealEntry,
+} from "./searchIndexer";
+
 type Role = "admin" | "cohort_manager" | "evaluator" | "founder";
 
 interface Actor {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { ApplicationDoc, StartupDoc } from "@/core/types";
+import type { ApplicationDoc, OpsSummaryDoc, StartupDoc } from "@/core/types";
 
 /**
  * All applications across every cohort — staff-only read (rules short-circuit
@@ -59,5 +59,32 @@ export function useAllStartups() {
     return unsubscribe;
   }, []);
 
+  return state;
+}
+
+/**
+ * Per-startup ops rollups (OPS-06) — staff read the aggregated summary here,
+ * never the raw CRM/finance rows. Write-side lives in features/crm + accounting.
+ */
+export function useAllOpsSummaries() {
+  const [state, setState] = useState<{ summaries: OpsSummaryDoc[]; loading: boolean }>({
+    summaries: [],
+    loading: true,
+  });
+  useEffect(() => {
+    return onSnapshot(
+      collection(db, "opsSummary"),
+      (snap) => {
+        setState({
+          summaries: snap.docs.map((d) => ({ id: d.id, ...d.data() }) as OpsSummaryDoc),
+          loading: false,
+        });
+      },
+      (error) => {
+        console.error("opsSummary listener error", error);
+        setState({ summaries: [], loading: false });
+      },
+    );
+  }, []);
   return state;
 }
