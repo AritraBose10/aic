@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.submitApplication = exports.reopenDecision = exports.recordDecision = exports.indexDealEntry = exports.indexAdoptionWorkspace = exports.indexApplication = exports.indexDocument = exports.indexInvestorProfile = exports.indexStartup = exports.deactivateAccount = exports.runRetentionCleanupNow = exports.retentionCleanup = exports.revokeMySessions = exports.mergeIdentities = exports.searchQuery = exports.generateOutreachDraft = void 0;
+exports.submitApplication = exports.reopenDecision = exports.recordDecision = exports.indexDealEntry = exports.indexAdoptionWorkspace = exports.indexApplication = exports.indexDocument = exports.indexInvestorProfile = exports.indexStartup = exports.scheduledFirestoreBackup = exports.deactivateAccount = exports.runRetentionCleanupNow = exports.retentionCleanup = exports.revokeMySessions = exports.mergeIdentities = exports.searchQuery = exports.generateOutreachDraft = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const app_1 = require("firebase-admin/app");
 const firestore_1 = require("firebase-admin/firestore");
@@ -22,6 +22,9 @@ var retention_1 = require("./retention");
 Object.defineProperty(exports, "retentionCleanup", { enumerable: true, get: function () { return retention_1.retentionCleanup; } });
 Object.defineProperty(exports, "runRetentionCleanupNow", { enumerable: true, get: function () { return retention_1.runRetentionCleanupNow; } });
 Object.defineProperty(exports, "deactivateAccount", { enumerable: true, get: function () { return retention_1.deactivateAccount; } });
+// NFR-10 scheduled Firestore backup/export to GCS (Blaze-gated — built, not deployed).
+var backup_1 = require("./backup");
+Object.defineProperty(exports, "scheduledFirestoreBackup", { enumerable: true, get: function () { return backup_1.scheduledFirestoreBackup; } });
 // core/search indexer — Firestore triggers that maintain the searchIndex (Blaze-gated).
 var searchIndexer_1 = require("./searchIndexer");
 Object.defineProperty(exports, "indexStartup", { enumerable: true, get: function () { return searchIndexer_1.indexStartup; } });

@@ -28,6 +28,7 @@ function WorkspaceCard({ ws, actor, isAdopter }: { ws: AdoptionWorkspaceDoc; act
   const [commitments, setCommitments] = useState(ws.commitments);
   const [impact, setImpact] = useState<AdoptionImpact>(ws.impact);
   const [leadName, setLeadName] = useState("");
+  const [addingLead, setAddingLead] = useState(false);
 
   return (
     <Card>
@@ -56,9 +57,14 @@ function WorkspaceCard({ ws, actor, isAdopter }: { ws: AdoptionWorkspaceDoc; act
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Contribute a sales lead (ABS-06)</p>
             <div className="flex items-end gap-2">
               <Input value={leadName} onChange={(e) => setLeadName(e.target.value)} placeholder="Lead name / company" />
-              <Button size="sm" variant="outline" disabled={!leadName.trim()}
-                onClick={() => contributeAdoptionLead(actor, { startupId: ws.startupId, founderId: ws.founderId }, { name: leadName })
-                  .then(() => { toast.success("Lead added to startup CRM"); setLeadName(""); }).catch(() => toast.error("Failed"))}>
+              <Button size="sm" variant="outline" disabled={!leadName.trim() || addingLead}
+                onClick={() => {
+                  setAddingLead(true);
+                  contributeAdoptionLead(actor, { startupId: ws.startupId, founderId: ws.founderId }, { name: leadName })
+                    .then(() => { toast.success("Lead added to startup CRM"); setLeadName(""); })
+                    .catch(() => toast.error("Failed"))
+                    .finally(() => setAddingLead(false));
+                }}>
                 <Plus className="size-4" /> Add lead
               </Button>
             </div>

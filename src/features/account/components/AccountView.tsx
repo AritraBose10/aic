@@ -9,6 +9,7 @@ import { useAuth } from "@/features/auth/hooks/useAuth";
 import { logoutUser } from "@/features/auth/lib/authActions";
 import { revokeMySessions } from "@/features/auth/lib/sessionActions";
 import { exportMyData, downloadJson, deactivateMyAccount } from "@/features/account/lib/accountActions";
+import { MfaSetupCard } from "@/features/auth/components/MfaSetupCard";
 
 export function AccountView() {
   const { userDoc } = useAuth();
@@ -25,6 +26,9 @@ export function AccountView() {
 
   return (
     <div className="space-y-6">
+      {/* MFA (SEC-04) — privileged roles */}
+      <MfaSetupCard />
+
       {/* Security (SEC-05) */}
       <Card>
         <CardHeader>

@@ -39,3 +39,23 @@ export function usePitchEvents(viewer: { uid: string; role: Role } | undefined) 
   }, [viewer?.uid, viewer?.role]);
   return { events, loading };
 }
+
+/** Verified investors a staff member can invite to a pitch event (picker source,
+ *  replaces typing a raw uid). Reads users by role — staff-readable. */
+export function useInvitableInvestors() {
+  const [investors, setInvestors] = useState<{ uid: string; name: string }[]>([]);
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("role", "==", "investor"));
+    return onSnapshot(
+      q,
+      (snap) => setInvestors(
+        snap.docs
+          .map((d) => d.data() as { uid: string; name: string; identityStatus?: string })
+          .filter((u) => u.identityStatus === "verified")
+          .map((u) => ({ uid: u.uid, name: u.name })),
+      ),
+      (e) => console.error("invitable investors listener", e),
+    );
+  }, []);
+  return investors;
+}

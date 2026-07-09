@@ -9,9 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvestorDisclaimer } from "@/components/InvestorDisclaimer";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { usePitchEvents } from "@/features/pitchEvents/hooks/usePitchEvents";
+import { usePitchEvents, useInvitableInvestors } from "@/features/pitchEvents/hooks/usePitchEvents";
 import { createPitchEvent, updatePitchEvent, submitPitchFeedback } from "@/features/pitchEvents/lib/pitchEventActions";
 import type { PitchEventDoc } from "@/core/types";
 
@@ -19,6 +20,7 @@ function StaffCreate({ actor }: { actor: { uid: string; role: import("@/core/typ
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [at, setAt] = useState("");
+  const [busy, setBusy] = useState(false);
   return (
     <Card>
       <CardHeader><CardTitle className="text-base">Create pitch event</CardTitle></CardHeader>
@@ -26,10 +28,13 @@ function StaffCreate({ actor }: { actor: { uid: string; role: import("@/core/typ
         <div className="flex-1 min-w-40 space-y-1"><Label className="text-xs">Title</Label><Input value={title} onChange={(e) => setTitle(e.target.value)} /></div>
         <div className="space-y-1"><Label className="text-xs">When</Label><Input type="datetime-local" className="w-52" value={at} onChange={(e) => setAt(e.target.value)} /></div>
         <div className="flex-1 min-w-40 space-y-1"><Label className="text-xs">Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} /></div>
-        <Button disabled={!title.trim() || !at} onClick={() =>
+        <Button disabled={!title.trim() || !at || busy} onClick={() => {
+          setBusy(true);
           createPitchEvent(actor, { title, description, at: new Date(at) })
             .then(() => { toast.success("Event created"); setTitle(""); setDescription(""); setAt(""); })
-            .catch(() => toast.error("Failed"))}>
+            .catch(() => toast.error("Failed"))
+            .finally(() => setBusy(false));
+        }}>
           <Plus className="size-4" /> Create
         </Button>
       </CardContent>
@@ -41,7 +46,8 @@ function EventCard({ event, isStaff, isInvestor, actor }: {
   event: PitchEventDoc; isStaff: boolean; isInvestor: boolean;
   actor: { uid: string; role: import("@/core/types").Role; name: string };
 }) {
-  const [inviteUid, setInviteUid] = useState("");
+  const investors = useInvitableInvestors();
+  const notInvited = investors.filter((i) => !event.investorUids.includes(i.uid));
   const [fbStartup, setFbStartup] = useState("");
   const [fbNote, setFbNote] = useState("");
   return (
@@ -61,11 +67,18 @@ function EventCard({ event, isStaff, isInvestor, actor }: {
                   onClick={() => updatePitchEvent(actor, event.id, { status: s }).catch(() => toast.error("Failed"))}>{s}</Button>
               ))}
             </div>
-            <div className="flex items-end gap-2">
-              <Input value={inviteUid} onChange={(e) => setInviteUid(e.target.value)} placeholder="Invite investor uid" />
-              <Button size="sm" variant="outline" disabled={!inviteUid.trim()}
-                onClick={() => updatePitchEvent(actor, event.id, { investorUids: [...event.investorUids, inviteUid.trim()] }).then(() => setInviteUid("")).catch(() => toast.error("Failed"))}>Invite</Button>
-            </div>
+            {notInvited.length > 0 ? (
+              <Select onValueChange={(v) => {
+                const inv = investors.find((i) => i.uid === v);
+                if (inv) updatePitchEvent(actor, event.id, { investorUids: [...event.investorUids, inv.uid] })
+                  .then(() => toast.success(`Invited ${inv.name}`)).catch(() => toast.error("Failed"));
+              }}>
+                <SelectTrigger className="h-8"><SelectValue placeholder="Invite an investor…" /></SelectTrigger>
+                <SelectContent>{notInvited.map((i) => <SelectItem key={i.uid} value={i.uid}>{i.name}</SelectItem>)}</SelectContent>
+              </Select>
+            ) : (
+              <p className="text-xs text-muted-foreground">No further verified investors to invite.</p>
+            )}
           </div>
         )}
         {isInvestor && event.status === "open" && (

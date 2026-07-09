@@ -1,0 +1,52 @@
+name: CI
+
+# NFR-11 — automated checks on every push and PR: typecheck, lint, build,
+# Firestore-rules tests, and Cloud Functions build + tests. Replaces the
+# manual per-phase verification done during development.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Set up Java (Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - name: Install app deps
+        run: npm ci
+
+      - name: Install functions deps
+        run: npm --prefix functions ci
+
+      - name: Typecheck (app)
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build (app)
+        run: npm run build
+
+      - name: Build (functions)
+        run: npm --prefix functions run build
+
+      - name: Firestore rules tests
+        run: npx --yes firebase-tools emulators:exec --only firestore --project=demo-aic-techno 'npx vitest run'
+
+      - name: Cloud Functions tests
+        run: npx --yes firebase-tools emulators:exec --only firestore --project=demo-aic-techno 'cd functions && npx vitest run'

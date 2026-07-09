@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   assertFails,
   assertSucceeds,
@@ -1083,5 +1083,81 @@ describe("duplicateCandidates (IDM-02) — staff-only review queue", () => {
         entityId: "x", timestamp: Timestamp.now(),
       }),
     );
+  });
+});
+
+describe("loginEvents (SEC-05) — own-uid only, append-only", () => {
+  it("a user reads/creates only their own login events; can't read others or mutate", async () => {
+    await assertSucceeds(
+      setDoc(doc(db("founder"), "loginEvents", "le1"), { uid: "founder", fingerprint: "abc", userAgent: "x", at: Timestamp.now() }),
+    );
+    await assertSucceeds(getDoc(doc(db("founder"), "loginEvents", "le1")));
+    await assertFails(getDoc(doc(db("intruder"), "loginEvents", "le1")));
+    await assertFails(
+      setDoc(doc(db("intruder"), "loginEvents", "le2"), { uid: "founder", fingerprint: "z", userAgent: "x", at: Timestamp.now() }),
+    );
+    await assertFails(updateDoc(doc(db("founder"), "loginEvents", "le1"), { fingerprint: "changed" }));
+  });
+});
+
+// ===================== Phase 4 end-to-end flows (cross-role, real rules) =====================
+
+describe("E2E flow (a): investor data room — request → approve → grant → view → logged", () => {
+  it("runs the full chain and enforces access at each step", async () => {
+    // A founder-owned data-room document (founder can grant it).
+    await env.withSecurityRulesDisabled(async (ctx) => {
+      await ctx.firestore().doc("documents/drDoc").set({
+        ownerType: "startup", ownerId: "s1", category: "pitch", title: "Deck", version: 1,
+        storagePath: "", downloadUrl: "", uploadedBy: "founder", visibleTo: ["founder"], supersededBy: null, createdAt: Timestamp.now(),
+      });
+    });
+    // Before any grant, the investor cannot read the doc.
+    await assertFails(getDoc(doc(db("invV"), "documents", "drDoc")));
+    // 1. verified investor requests access.
+    await assertSucceeds(setDoc(doc(db("invV"), "dataRoomRequests", "flowReq"), {
+      startupId: "s1", founderId: "founder", startupName: "s1", investorUid: "invV", investorName: "Inv V",
+      message: "m", status: "requested", createdAt: Timestamp.now(),
+    }));
+    // 2. founder approves.
+    await assertSucceeds(updateDoc(doc(db("founder"), "dataRoomRequests", "flowReq"), {
+      status: "approved", decidedBy: "founder", decidedAt: Timestamp.now(),
+    }));
+    // 3. founder grants the investor read access (visibleTo) + 4. logs the grant.
+    await assertSucceeds(updateDoc(doc(db("founder"), "documents", "drDoc"), { visibleTo: ["founder", "invV"] }));
+    await assertSucceeds(setDoc(doc(db("founder"), "dataRoomAccessLog", "logGrant"), {
+      startupId: "s1", founderId: "founder", investorUid: "invV", action: "granted", at: Timestamp.now(), by: "founder",
+    }));
+    // 5. NOW the investor can read the document; 6. logs a view.
+    await assertSucceeds(getDoc(doc(db("invV"), "documents", "drDoc")));
+    await assertSucceeds(setDoc(doc(db("invV"), "dataRoomAccessLog", "logView"), {
+      startupId: "s1", founderId: "founder", investorUid: "invV", action: "viewed", at: Timestamp.now(), by: "invV",
+    }));
+    // A different (unauthorized) investor still cannot read it.
+    await assertFails(getDoc(doc(db("inv"), "documents", "drDoc")));
+    // The founder sees both log entries.
+    const grant = await getDoc(doc(db("founder"), "dataRoomAccessLog", "logGrant"));
+    const view = await getDoc(doc(db("founder"), "dataRoomAccessLog", "logView"));
+    expect(grant.exists()).toBe(true);
+    expect(view.data()?.action).toBe("viewed");
+  });
+});
+
+describe("E2E flow (b): adopter contributes a CRM lead with correct attribution", () => {
+  it("adopter with an active workspace adds a lead the founder sees, attributed to the adopter", async () => {
+    // Workspace s1_adoV exists in the seed (founder accepted adoV).
+    await assertSucceeds(setDoc(doc(db("adoV"), "crmContacts", "flowLead"), {
+      startupId: "s1", founderId: "founder", name: "Contributed Lead",
+      contributedByUid: "adoV", contributedByName: "Ado V", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
+    // The founder reads the lead and sees the adopter attribution.
+    const snap = await getDoc(doc(db("founder"), "crmContacts", "flowLead"));
+    expect(snap.exists()).toBe(true);
+    expect(snap.data()?.contributedByUid).toBe("adoV");
+    expect(snap.data()?.contributedByName).toBe("Ado V");
+    // An adopter WITHOUT a workspace for that startup cannot contribute.
+    await assertFails(setDoc(doc(db("adoV"), "crmContacts", "flowLeadBad"), {
+      startupId: "s_inc", founderId: "founder", name: "X",
+      contributedByUid: "adoV", contributedByName: "Ado V", createdAt: Timestamp.now(), updatedAt: Timestamp.now(),
+    }));
   });
 });

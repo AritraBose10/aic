@@ -667,6 +667,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Error logs (NFR-12): any signed-in user appends their own uncaught client
+    // errors; only admins read them. Append-only.
+    match /errorLogs/{errorId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.uid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     // Login events (SEC-05): a user's own device/login history for new-device
     // detection. Append-only, own-uid only.
     match /loginEvents/{eventId} {

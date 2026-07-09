@@ -15,6 +15,8 @@ export { mergeIdentities } from "./merge";
 // SEC-05 session revocation + §9.2 retention cleanup + data-subject deactivation (Blaze-gated).
 export { revokeMySessions } from "./session";
 export { retentionCleanup, runRetentionCleanupNow, deactivateAccount } from "./retention";
+// NFR-10 scheduled Firestore backup/export to GCS (Blaze-gated — built, not deployed).
+export { scheduledFirestoreBackup } from "./backup";
 // core/search indexer — Firestore triggers that maintain the searchIndex (Blaze-gated).
 export {
   indexStartup,

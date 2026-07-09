@@ -37,20 +37,29 @@ function usePublished() {
 export function DealsView() {
   const { userDoc } = useAuth();
   const viewer = userDoc ? { uid: userDoc.uid, role: userDoc.role } : undefined;
-  const { deals } = useDeals(viewer);
+  const { deals, loading } = useDeals(viewer);
   const published = usePublished();
   const [pick, setPick] = useState("");
+  const [tracking, setTracking] = useState(false);
   if (!userDoc) return null;
   const isInvestor = userDoc.role === "investor";
   const actor = { uid: userDoc.uid, role: userDoc.role, name: userDoc.name };
 
   async function track() {
     const p = published.find((x) => x.id === pick);
-    if (!p) return;
+    if (!p || tracking) return;
+    // Don't create a second pipeline entry for a startup already tracked.
+    if (deals.some((d) => d.startupId === p.startupId && d.investorUid === actor.uid)) {
+      toast.info("You're already tracking this startup.");
+      setPick("");
+      return;
+    }
+    setTracking(true);
     try {
       await createDealEntry(actor, { startupId: p.startupId, startupName: p.startupName, founderId: p.founderId });
       toast.success("Deal tracked"); setPick("");
     } catch { toast.error("Failed"); }
+    finally { setTracking(false); }
   }
 
   return (
@@ -65,14 +74,15 @@ export function DealsView() {
               <SelectTrigger className="w-full sm:w-64"><SelectValue placeholder="Choose a startup…" /></SelectTrigger>
               <SelectContent>{published.map((p) => <SelectItem key={p.id} value={p.id}>{p.startupName}</SelectItem>)}</SelectContent>
             </Select>
-            <Button onClick={track} disabled={!pick}><Plus className="size-4" /> Track</Button>
+            <Button onClick={track} disabled={!pick || tracking}><Plus className="size-4" /> Track</Button>
           </CardContent>
         </Card>
       )}
 
       <section className="space-y-3">
         <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-muted-foreground"><TrendingUp className="size-4" /> Deal pipeline</h2>
-        {deals.length === 0 ? <p className="text-sm text-muted-foreground">No deals yet.</p>
+        {loading ? <p className="text-sm text-muted-foreground">Loading…</p>
+          : deals.length === 0 ? <p className="text-sm text-muted-foreground">No deals yet.</p>
           : deals.map((d) => (
             <Card key={d.id}>
               <CardHeader className="flex flex-row items-center justify-between">

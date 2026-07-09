@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,14 +34,15 @@ export function InvestorFacingProfileForm() {
   const [fundingAsk, setFundingAsk] = useState("");
   const [useOfFunds, setUseOfFunds] = useState("");
   const [busy, setBusy] = useState(false);
-  const [seeded, setSeeded] = useState(false);
+  const seededRef = useRef(false);
 
-  if (profile && !seeded) {
-    setSeeded(true);
+  useEffect(() => {
+    if (!profile || seededRef.current) return;
+    seededRef.current = true;
     setPitch(profile.pitch); setTraction(profile.traction); setTeam(profile.team);
     setFinancialSummary(profile.financialSummary); setFundingAsk(String(profile.fundingAskLakh));
     setUseOfFunds(profile.useOfFunds);
-  }
+  }, [profile]);
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (!userDoc || !startup) {

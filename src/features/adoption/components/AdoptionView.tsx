@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,15 +25,16 @@ function AdopterSelf() {
   const [expertise, setExpertise] = useState("");
   const [langs, setLangs] = useState("");
   const [modes, setModes] = useState<Record<string, boolean>>({});
-  const [seeded, setSeeded] = useState(false);
+  const seededRef = useRef(false);
   const [ackBusy, setAckBusy] = useState(false);
 
-  if (profile && !seeded) {
-    setSeeded(true);
+  useEffect(() => {
+    if (!profile || seededRef.current) return;
+    seededRef.current = true;
     setName(profile.name); setLocation(profile.location);
     setExpertise(profile.sectorExpertise.join(", ")); setLangs(profile.languages.join(", "));
     setModes(Object.fromEntries(profile.contributionModes.map((m) => [m, true])));
-  }
+  }, [profile]);
   if (!userDoc) return null;
   const actor = { uid: userDoc.uid, role: userDoc.role, name: userDoc.name };
 
@@ -84,8 +85,9 @@ function AdopterSelf() {
 
 function Discovery() {
   const { userDoc } = useAuth();
-  const startups = useDiscoverableStartups();
+  const { profiles: startups, loading } = useDiscoverableStartups();
   const [modes, setModes] = useState<Record<string, boolean>>({});
+  const [requested, setRequested] = useState<Record<string, boolean>>({});
   if (!userDoc) return null;
   const actor = { uid: userDoc.uid, role: userDoc.role, name: userDoc.name };
   return (
@@ -101,13 +103,17 @@ function Discovery() {
             </label>
           ))}
         </div>
-        {startups.length === 0 ? <p className="text-sm text-muted-foreground">No published startups yet.</p>
+        {loading ? <p className="text-sm text-muted-foreground">Loading…</p>
+          : startups.length === 0 ? <p className="text-sm text-muted-foreground">No published startups yet.</p>
           : startups.map((s) => (
             <div key={s.id} className="flex items-start justify-between gap-3 rounded-md border border-border p-3 text-sm">
               <div><p className="font-medium">{s.startupName}</p><p className="text-muted-foreground">{s.pitch}</p></div>
-              <Button size="sm" variant="outline" className="shrink-0" onClick={() =>
+              <Button size="sm" variant="outline" className="shrink-0" disabled={!!requested[s.startupId]} onClick={() => {
+                setRequested((r) => ({ ...r, [s.startupId]: true }));
                 requestAdoption(actor, { startupId: s.startupId, founderId: s.founderId, startupName: s.startupName }, MODES.filter((m) => modes[m]), "Interested in adopting.")
-                  .then(() => toast.success("Adoption requested")).catch((e) => toast.error(e instanceof Error ? e.message : "Failed"))}>Request</Button>
+                  .then(() => toast.success("Adoption requested"))
+                  .catch((e) => { toast.error(e instanceof Error ? e.message : "Failed"); setRequested((r) => ({ ...r, [s.startupId]: false })); });
+              }}>{requested[s.startupId] ? "Requested" : "Request"}</Button>
             </div>
           ))}
       </CardContent>
@@ -143,6 +149,33 @@ function FounderRequests() {
   );
 }
 
+const REQ_STATUS_STYLE: Record<string, string> = {
+  requested: "bg-muted text-muted-foreground",
+  accepted: "bg-success/10 text-success",
+  declined: "bg-destructive/10 text-destructive",
+  negotiating: "bg-sky-500/10 text-sky-700 dark:text-sky-300",
+};
+
+function AdopterRequests({ uid }: { uid: string }) {
+  const requests = useAdoptionRequests({ adopterUid: uid });
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Your adoption requests</CardTitle>
+        <CardDescription>Track the status of startups you&apos;ve offered to adopt.</CardDescription></CardHeader>
+      <CardContent className="space-y-2">
+        {requests.length === 0 ? <p className="text-sm text-muted-foreground">You haven&apos;t requested any adoptions yet.</p>
+          : requests.map((r) => (
+            <div key={r.id} className="flex items-center justify-between rounded-md border border-border p-3 text-sm">
+              <div><p className="font-medium">{r.startupName}</p>
+                <p className="text-xs text-muted-foreground">{r.modes.map((m) => ADOPTION_MODE_LABELS[m]).join(", ")}</p></div>
+              <Badge variant="secondary" className={REQ_STATUS_STYLE[r.status]}>{r.status}</Badge>
+            </div>
+          ))}
+      </CardContent>
+    </Card>
+  );
+}
+
 export function AdoptionView() {
   const { userDoc } = useAuth();
   if (!userDoc) return null;
@@ -165,6 +198,7 @@ export function AdoptionView() {
             <>
               <div className="flex items-center gap-2 text-xs text-success"><ShieldCheck className="size-4" /> Verified adopter</div>
               <Discovery />
+              <AdopterRequests uid={userDoc.uid} />
             </>
           )}
         </>

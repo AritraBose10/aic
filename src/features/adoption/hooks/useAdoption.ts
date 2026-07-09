@@ -18,11 +18,16 @@ export function useAdopterProfile(uid: string | undefined) {
 /** Published startup profiles for adopter discovery (read directly — no cross-feature import). */
 export function useDiscoverableStartups() {
   const [profiles, setProfiles] = useState<StartupInvestorProfileDoc[]>([]);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     const q = query(collection(db, "startupInvestorProfiles"), where("status", "==", "published"));
-    return onSnapshot(q, (snap) => setProfiles(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as StartupInvestorProfileDoc)), () => setProfiles([]));
+    return onSnapshot(
+      q,
+      (snap) => { setProfiles(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as StartupInvestorProfileDoc)); setLoading(false); },
+      () => { setProfiles([]); setLoading(false); },
+    );
   }, []);
-  return profiles;
+  return { profiles, loading };
 }
 
 export function useAdoptionRequests(opts: { founderId?: string; adopterUid?: string }) {

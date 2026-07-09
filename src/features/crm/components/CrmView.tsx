@@ -96,6 +96,8 @@ export function CrmView() {
   const [cConsent, setCConsent] = useState(false);
   const [oTitle, setOTitle] = useState("");
   const [oValue, setOValue] = useState("");
+  const [addingContact, setAddingContact] = useState(false);
+  const [addingOpp, setAddingOpp] = useState(false);
 
   if (loading) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (!userDoc || !startup) {
@@ -116,24 +118,30 @@ export function CrmView() {
   const builtIn = (config?.crmMode ?? "built_in") === "built_in";
 
   async function addContact() {
-    if (!cName.trim()) return;
+    if (!cName.trim() || addingContact) return;
+    setAddingContact(true);
     try {
       await createContact(actor, owner, { name: cName, email: cEmail, outreachConsent: cConsent });
       setCName(""); setCEmail(""); setCConsent(false);
       toast.success("Contact added");
     } catch {
       toast.error("Could not add contact");
+    } finally {
+      setAddingContact(false);
     }
   }
 
   async function addOpp() {
-    if (!oTitle.trim()) return;
+    if (!oTitle.trim() || addingOpp) return;
+    setAddingOpp(true);
     try {
       await createOpportunity(actor, owner, { title: oTitle, value: Number(oValue) || 0 });
       setOTitle(""); setOValue("");
       toast.success("Opportunity added");
     } catch {
       toast.error("Could not add opportunity");
+    } finally {
+      setAddingOpp(false);
     }
   }
 
@@ -158,7 +166,7 @@ export function CrmView() {
                 <Label className="text-xs">Value (₹)</Label>
                 <Input type="number" min={0} className="w-32" value={oValue} onChange={(e) => setOValue(e.target.value)} />
               </div>
-              <Button onClick={addOpp} disabled={!oTitle.trim()}><Plus className="size-4" /> Add</Button>
+              <Button onClick={addOpp} disabled={!oTitle.trim() || addingOpp}><Plus className="size-4" /> Add</Button>
             </div>
           )}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -213,7 +221,7 @@ export function CrmView() {
                 <Checkbox checked={cConsent} onCheckedChange={() => setCConsent((v) => !v)} />
                 Consented to outreach
               </label>
-              <Button onClick={addContact} disabled={!cName.trim()}><Plus className="size-4" /> Add</Button>
+              <Button onClick={addContact} disabled={!cName.trim() || addingContact}><Plus className="size-4" /> Add</Button>
             </div>
           )}
           <ul className="divide-y divide-border rounded-md border border-border">
