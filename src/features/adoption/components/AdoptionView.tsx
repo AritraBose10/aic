@@ -10,7 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/features/auth/hooks/useAuth";
-import { useAdopterProfile, useDiscoverableStartups, useAdoptionRequests } from "@/features/adoption/hooks/useAdoption";
+import {
+  useAdopterAccounts,
+  useAdopterProfile,
+  useAdoptionRequests,
+  useAllAdoptionRequests,
+  useDiscoverableStartups,
+} from "@/features/adoption/hooks/useAdoption";
+import { rejectIdentity, verifyIdentity } from "@/features/auth/lib/authActions";
 import { saveAdopterProfile, recordAcknowledgements, requestAdoption, decideAdoption } from "@/features/adoption/lib/adoptionActions";
 import { ADOPTION_MODE_LABELS, type AdoptionMode } from "@/core/types";
 
@@ -176,15 +183,114 @@ function AdopterRequests({ uid }: { uid: string }) {
   );
 }
 
+const IDENTITY_STYLE: Record<string, string> = {
+  verified: "bg-success/10 text-success",
+  pending_verification: "bg-amber-500/10 text-amber-700 dark:text-amber-400",
+  unverified: "bg-muted text-muted-foreground",
+};
+
+/**
+ * Staff view (ABS-01, ABS-03/04 oversight): verify adopter identities — the
+ * gate that unlocks discovery for them — and monitor every adoption request.
+ * Only admins may change a user's identity status (users rule), so cohort
+ * managers see the list read-only.
+ */
+function StaffOverview() {
+  const { userDoc } = useAuth();
+  const { adopters, loading: adoptersLoading } = useAdopterAccounts();
+  const { requests, loading: requestsLoading } = useAllAdoptionRequests();
+  const [busyUid, setBusyUid] = useState<string | null>(null);
+  if (!userDoc) return null;
+  const isAdmin = userDoc.role === "admin";
+  const pending = adopters.filter((a) => a.approvalStatus === "approved" && a.identityStatus !== "verified");
+
+  async function decide(uid: string, verify: boolean) {
+    if (!userDoc) return;
+    setBusyUid(uid);
+    try {
+      if (verify) await verifyIdentity(uid, userDoc.uid, userDoc.role);
+      else await rejectIdentity(uid, userDoc.uid, userDoc.role, "Not verified by admin");
+      toast.success(verify ? "Adopter verified" : "Verification rejected");
+    } catch {
+      toast.error("Could not update verification");
+    } finally {
+      setBusyUid(null);
+    }
+  }
+
+  return (
+    <>
+      <Card>
+        <CardHeader><CardTitle className="text-base">Adopter verification</CardTitle>
+          <CardDescription>
+            Approved adopters can only discover and request startups once their identity is verified.
+            {!isAdmin && " Only admins can verify."}
+          </CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {adoptersLoading ? <p className="text-sm text-muted-foreground">Loading…</p>
+            : adopters.length === 0 ? <p className="text-sm text-muted-foreground">No adopters have registered yet.</p>
+            : adopters.map((a) => {
+              const status = a.identityStatus ?? "unverified";
+              const canDecide = isAdmin && a.approvalStatus === "approved" && status !== "verified";
+              return (
+                <div key={a.uid} className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
+                  <div><p className="font-medium">{a.name}</p>
+                    <p className="text-xs text-muted-foreground">{a.email}{a.approvalStatus !== "approved" && ` · account ${a.approvalStatus}`}</p></div>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="secondary" className={IDENTITY_STYLE[status]}>{status.replace("_", " ")}</Badge>
+                    {canDecide && (
+                      <>
+                        {status === "pending_verification" && (
+                          <Button size="sm" variant="outline" disabled={busyUid === a.uid} onClick={() => decide(a.uid, false)}>Reject</Button>
+                        )}
+                        <Button size="sm" disabled={busyUid === a.uid} onClick={() => decide(a.uid, true)}>
+                          <ShieldCheck className="size-4" /> Verify
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          {pending.length > 0 && isAdmin && (
+            <p className="text-xs text-muted-foreground">{pending.length} approved adopter{pending.length > 1 ? "s" : ""} awaiting verification.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader><CardTitle className="text-base">All adoption requests</CardTitle>
+          <CardDescription>Every request between adopters and startups, newest first.</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {requestsLoading ? <p className="text-sm text-muted-foreground">Loading…</p>
+            : requests.length === 0 ? <p className="text-sm text-muted-foreground">No adoption requests yet.</p>
+            : requests.map((r) => (
+              <div key={r.id} className="flex items-center justify-between gap-2 rounded-md border border-border p-3 text-sm">
+                <div><p className="font-medium">{r.adopterName} → {r.startupName}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {r.modes.map((m) => ADOPTION_MODE_LABELS[m]).join(", ")}
+                    {r.createdAt && ` · ${r.createdAt.toDate().toLocaleDateString()}`}
+                  </p></div>
+                <Badge variant="secondary" className={REQ_STATUS_STYLE[r.status]}>{r.status}</Badge>
+              </div>
+            ))}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
 export function AdoptionView() {
   const { userDoc } = useAuth();
   if (!userDoc) return null;
   const isAdopter = userDoc.role === "probasi_adopter";
   const isFounder = userDoc.role === "founder";
+  const isStaff = userDoc.role === "admin" || userDoc.role === "cohort_manager";
   const verified = userDoc.identityStatus === "verified";
 
   return (
     <div className="space-y-6">
+      {isStaff && <StaffOverview />}
       {isFounder && <FounderRequests />}
       {isAdopter && (
         <>

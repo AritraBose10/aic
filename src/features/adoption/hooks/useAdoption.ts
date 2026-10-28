@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { AdopterProfileDoc, AdoptionRequestDoc, StartupInvestorProfileDoc } from "@/core/types";
+import type { AdopterProfileDoc, AdoptionRequestDoc, StartupInvestorProfileDoc, UserDoc } from "@/core/types";
 
 export function useAdopterProfile(uid: string | undefined) {
   const [profile, setProfile] = useState<AdopterProfileDoc | null>(null);
@@ -41,4 +41,31 @@ export function useAdoptionRequests(opts: { founderId?: string; adopterUid?: str
       (e) => console.error("adoptionRequests listener", e));
   }, [opts.founderId, opts.adopterUid]);
   return requests;
+}
+
+/** Every adoption request — staff-only read (rules short-circuit on isStaff()). */
+export function useAllAdoptionRequests() {
+  const [state, setState] = useState<{ requests: AdoptionRequestDoc[]; loading: boolean }>({ requests: [], loading: true });
+  useEffect(() => {
+    return onSnapshot(collection(db, "adoptionRequests"), (snap) => setState({
+      requests: snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }) as AdoptionRequestDoc)
+        .sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0)),
+      loading: false,
+    }), (e) => { console.error("adoptionRequests listener", e); setState({ requests: [], loading: false }); });
+  }, []);
+  return state;
+}
+
+/** Registered Probasi adopter accounts with their identity status — staff-only read. */
+export function useAdopterAccounts() {
+  const [state, setState] = useState<{ adopters: UserDoc[]; loading: boolean }>({ adopters: [], loading: true });
+  useEffect(() => {
+    const q = query(collection(db, "users"), where("role", "==", "probasi_adopter"));
+    return onSnapshot(q, (snap) => setState({
+      adopters: snap.docs.map((d) => d.data() as UserDoc).sort((a, b) => a.name.localeCompare(b.name)),
+      loading: false,
+    }), (e) => { console.error("adopter accounts listener", e); setState({ adopters: [], loading: false }); });
+  }, []);
+  return state;
 }
