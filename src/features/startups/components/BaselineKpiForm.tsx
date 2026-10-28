@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -45,6 +45,7 @@ export function BaselineKpiForm({ startupId, onDone }: { startupId: string; onDo
     resolver: zodResolver(schema),
     defaultValues: { revenueBand: "", customers: "0", teamSize: "1", fundsRaised: "0", notes: "" },
   });
+  const revenueBand = useWatch({ control: form.control, name: "revenueBand" });
 
   async function onSubmit(data: FormValues) {
     if (!userDoc) return;
@@ -80,7 +81,7 @@ export function BaselineKpiForm({ startupId, onDone }: { startupId: string; onDo
       <div className="space-y-2">
         <Label>Revenue band</Label>
         <Select
-          value={form.watch("revenueBand")}
+          value={revenueBand}
           onValueChange={(v) => form.setValue("revenueBand", v ?? "", { shouldValidate: true })}
         >
           <SelectTrigger>

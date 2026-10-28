@@ -274,7 +274,6 @@ async function seed() {
     const doc2 = `seed_doc_02_${u.uid}`;
     const enrollment1 = `seed_enrollment_01_${u.uid}`;
     const enrollment2 = `seed_enrollment_02_${u.uid}`;
-    const graduation1 = `seed_graduation_01_${u.uid}`;
     const consent1 = `seed_consent_01_${u.uid}`;
     const consent2 = `seed_consent_02_${u.uid}`;
     const contact1 = `seed_crm_contact_01_${u.uid}`;

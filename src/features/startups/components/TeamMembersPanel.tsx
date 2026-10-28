@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -63,6 +63,7 @@ export function TeamMembersPanel({ startup }: { startup: StartupDoc }) {
     resolver: zodResolver(schema),
     defaultValues: { email: "", accessRole: "co_founder" },
   });
+  const accessRole = useWatch({ control: form.control, name: "accessRole" });
 
   async function onInvite(data: FormValues) {
     if (!userDoc) return;
@@ -124,7 +125,7 @@ export function TeamMembersPanel({ startup }: { startup: StartupDoc }) {
           <div className="space-y-2">
             <Label>Access role</Label>
             <Select
-              value={form.watch("accessRole")}
+              value={accessRole}
               onValueChange={(v) => form.setValue("accessRole", v as FormValues["accessRole"])}
             >
               <SelectTrigger className="w-40">

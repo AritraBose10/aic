@@ -13,12 +13,14 @@ import type { PitchEventDoc, Role } from "@/core/types";
 export function usePitchEvents(viewer: { uid: string; role: Role } | undefined) {
   const [events, setEvents] = useState<PitchEventDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const uid = viewer?.uid;
+  const role = viewer?.role;
   useEffect(() => {
-    if (!viewer) return;
+    if (!uid || !role) return;
     const base = collection(db, "pitchEvents");
     let q: Query = base;
-    if (viewer.role === "investor") q = query(base, where("investorUids", "array-contains", viewer.uid));
-    else if (viewer.role === "founder") q = query(base, where("shortlistFounderIds", "array-contains", viewer.uid));
+    if (role === "investor") q = query(base, where("investorUids", "array-contains", uid));
+    else if (role === "founder") q = query(base, where("shortlistFounderIds", "array-contains", uid));
     // staff: unconstrained (rules allow)
     return onSnapshot(
       q,
@@ -36,7 +38,7 @@ export function usePitchEvents(viewer: { uid: string; role: Role } | undefined) 
         setLoading(false);
       },
     );
-  }, [viewer?.uid, viewer?.role]);
+  }, [uid, role]);
   return { events, loading };
 }
 

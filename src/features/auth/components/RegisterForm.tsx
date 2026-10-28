@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
@@ -80,7 +80,7 @@ export function RegisterForm() {
     mode: "onBlur",
   });
 
-  const values = form.watch();
+  const values = useWatch({ control: form.control });
 
   const stepFields: Record<number, (keyof FormValues)[]> = {
     0: ["name", "email", "password", "phone"],
